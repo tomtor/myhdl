@@ -51,9 +51,10 @@ def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling, width=8):
     return access
 
 
-width=32
-cap=16
+if __name__ == "__main__":
+    width=32
+    cap=16
 
-f32 = fifo(Signal(intbv()[width:]), Signal(intbv()[width:]), Signal(bool(0)), Signal(bool(0)),
-             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)), ResetSignal(0,0,True), cap, width)
-f32.convert(name="fifo32_16")
+    f32 = fifo(Signal(intbv()[width:]), Signal(intbv()[width:]), Signal(bool(0)), Signal(bool(0)),
+             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)), Signal(bool(1)), cap, width)
+    f32.convert(name="fifo32_16")

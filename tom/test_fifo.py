@@ -74,7 +74,7 @@ def testbench():
   rd = Signal(bool(0))
   empty = Signal(bool(0))
   full = Signal(bool(0))
-  reset = ResetSignal(1,0,True)
+  reset = Signal(bool(1)) # ResetSignal(1,0,True)
   
   f8 = fifo(dout, din, rd, wr, empty, full, clk, reset, 8)
   
@@ -88,19 +88,25 @@ def testbench():
     yield clk.negedge
     reset.next= 1
     yield clk.negedge
-    for _ in range(3):    
+    for _ in range(5):    
       wr.next= 1
       for _ in range(3 + random.randint(-1,1)):
-        v = random.randint(1,255)
-        din.next = v
-        yield clk.negedge
-        print("Now: %d In: %s Empty: %d Full: %d" % (now(), hex(v), empty, full))
+        if full:
+          pass
+        else:
+          v = random.randint(1,255)
+          din.next = v
+          yield clk.negedge
+          print("Now: %d In: %s Empty: %d Full: %d" % (now(), hex(v), empty, full))
       wr.next = 0
       yield clk.negedge
       rd.next = 1
       for _ in range(2 + random.randint(-1,1)):
-        yield clk.negedge
-        print("Now: %d Out: %s Empty: %d Full: %d" % (now(), hex(dout), empty, full))
+        if empty:
+          pass
+        else:
+          yield clk.negedge
+          print("Now: %d Out: %s Empty: %d Full: %d" % (now(), hex(dout), empty, full))
       rd.next = 0
       yield clk.negedge
   
