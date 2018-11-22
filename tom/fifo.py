@@ -1,10 +1,11 @@
 from math import log2
 
-from myhdl import always, always_seq, instance, block, Signal, ResetSignal, intbv, modbv, delay,\
-  StopSimulation, now, Error, Simulation, traceSignals
+from myhdl import always, always_seq, instance, block, Signal, ResetSignal, \
+  intbv, modbv, delay, StopSimulation, now, Error, Simulation, traceSignals
+
 
 @block
-def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling, width=8):
+def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling=8, width=8):
 
     """ Synchronous fifo model
 
@@ -26,35 +27,47 @@ def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling, width=8):
     r2 = log2(maxFilling)
     inp = Signal(modbv(0)[r2:])
     outp = Signal(modbv(0)[r2:])
-    
+
     @always(clk.posedge, reset)
     def access():
-      if not reset:
-        inp.next = 0
-        outp.next = 0
-        empty.next = 1
-        full.next = 0
-      else:
-        if wr:
-          if (inp.next + 1) % maxFilling == outp:
-            raise Error("Full FIFO")
-          memory[inp].next = din.val
-          inp.next = inp + 1       
-        if rd:
-          if inp == outp:
-            raise Error("Empty FIFO")
-          dout.next = memory[outp]
-          outp.next = outp + 1
-        empty.next = (inp.next == outp.next)
-        full.next = ((inp.next + 1) % maxFilling == outp.next)
-        
+        if not reset:
+            inp.next = 0
+            outp.next = 0
+            empty.next = True
+            full.next = False
+        else:
+            if wr and rd:
+                raise Error("Read and Write FIFO")
+            elif wr:
+                if (inp + 1) % maxFilling == outp:
+                    raise Error("Full FIFO")
+                memory[inp].next = din
+                inp.next = inp + 1
+                empty.next = False
+                full.next = ((inp + 2) % maxFilling == outp)
+            elif rd:
+                if inp == outp:
+                    raise Error("Empty FIFO")
+                dout.next = memory[outp]
+                outp.next = outp + 1
+                full.next = False
+                empty.next = (inp == outp + 1)
+
     return access
 
 
 if __name__ == "__main__":
-    width=32
-    cap=16
+    width = 8
+    cap = 8
+    f = fifo(Signal(intbv()[width:]), Signal(intbv()[width:]), Signal(bool(0)),
+             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)),
+             Signal(bool(0)), Signal(bool(1)), cap, width)
+    f.convert(name="fifo8_8")
 
-    f32 = fifo(Signal(intbv()[width:]), Signal(intbv()[width:]), Signal(bool(0)), Signal(bool(0)),
-             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)), Signal(bool(1)), cap, width)
+    width = 32
+    cap = 16
+
+    f32 = fifo(Signal(intbv()[width:]), Signal(intbv()[width:]),
+               Signal(bool(0)), Signal(bool(0)), Signal(bool(0)),
+               Signal(bool(0)), Signal(bool(0)), Signal(bool(1)), cap, width)
     f32.convert(name="fifo32_16")

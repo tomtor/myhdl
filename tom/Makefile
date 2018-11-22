@@ -9,3 +9,10 @@ build: $(MODULES)
 
 test: $(MODULES)
 	for p in $?; do $(PYTHON) test_$$p; done
+
+icarus:
+	iverilog -o test_fifo test_fifo_bench.v
+	vvp test_fifo
+
+clean:
+	rm -f *.vcd *.v
