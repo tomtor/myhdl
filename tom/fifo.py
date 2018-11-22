@@ -36,16 +36,14 @@ def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling=8, width=8):
             empty.next = True
             full.next = False
         else:
-            if wr and rd:
-                raise Error("Read and Write FIFO")
-            elif wr:
+            if wr:
                 if (inp + 1) % maxFilling == outp:
                     raise Error("Full FIFO")
                 memory[inp].next = din
                 inp.next = inp + 1
                 empty.next = False
                 full.next = ((inp + 2) % maxFilling == outp)
-            elif rd:
+            if rd:
                 if inp == outp:
                     raise Error("Empty FIFO")
                 dout.next = memory[outp]

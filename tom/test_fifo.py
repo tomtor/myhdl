@@ -1,14 +1,29 @@
 import unittest
+import os
 
 from myhdl import instance, block, Signal, ResetSignal,\
-    intbv, delay, StopSimulation, now, Simulation, instances
+    intbv, delay, StopSimulation, now, Simulation, Cosimulation
 
-from fifo import fifo
+# COSIMULATION = True
+COSIMULATION = False
+
+if not COSIMULATION:
+    from fifo import fifo
+else:
+    def fifo(dout, din, rd, wr, empty, full, clk, reset, maxFilling, width):
+        print("Cosimulation")
+        cmd = "iverilog -o fifo " + \
+              "fifo8_8.v " + \
+              "tb_fifo8_8.v "
+        os.system(cmd)
+        return Cosimulation("vvp -m ./myhdl fifo", dout=dout, din=din, rd=rd,
+                            wr=wr, empty=empty, full=full, clk=clk,
+                            reset=reset, maxFilling=maxFilling, width=width)
 
 
 class TestFifo(unittest.TestCase):
 
-    cap = 4
+    cap = 8
 
     def testMain(self):
 
@@ -57,7 +72,7 @@ class TestFifo(unittest.TestCase):
         empty = Signal(bool(0))
         full = Signal(bool(0))
         reset = ResetSignal(1, 0, True)
-        dut = fifo(dout, din, rd, wr, empty, full, clk, reset, TestFifo.cap)
+        dut = fifo(dout, din, rd, wr, empty, full, clk, reset, TestFifo.cap, 8)
         check = test(dout, din, rd, wr, empty, full, clk, reset)
         sim = Simulation(dut, check)
         # traceSignals(dut)
@@ -122,14 +137,16 @@ def test_fifo_bench():
     return f8, stimulus
 
 
-tb = test_fifo_bench()
+if not COSIMULATION:
+    tb = test_fifo_bench()
 
-print("convert:")
-tb.convert(initial_values=True)
+    print("convert:")
+    tb.convert(initial_values=True)
 
-print("sim:")
-tb.config_sim(trace=False)
-tb.run_sim()
+    print("sim:")
+    tb.config_sim(trace=False)
+    tb.run_sim()
 
-print("Start Unit test")
-unittest.main(verbosity=2)
+else:
+    print("Start Unit test")
+    unittest.main(verbosity=2)
