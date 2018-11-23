@@ -3,7 +3,7 @@ from math import log2
 from myhdl import always, block, Signal, intbv, modbv, Error, ResetSignal, \
     instance
 
-block_size = 1024
+block_size = 64
 
 
 @block
@@ -31,7 +31,12 @@ def deflate(i_de, i_start, o_done,
             if out_en:
                 o_dout.next = oram[out_addr]
             if i_start:
-                oram[0].next = iram[0]
+                if not i_de:
+                    raise Error("deflate compress not yet implemented")
+                i = 0
+                for i in range(in_addr+1):
+                    oram[i].next = iram[i]
+                out_addr.next = i
                 o_done.next = True
 
     return logic

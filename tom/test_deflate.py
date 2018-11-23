@@ -1,8 +1,9 @@
 import unittest
 import os
+import zlib
 
-from myhdl import instance, block, Signal, ResetSignal, always, \
-    intbv, delay, StopSimulation, now, Simulation, Cosimulation
+from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation,
+    Cosimulation
 
 COSIMULATION = True
 COSIMULATION = False
@@ -30,37 +31,69 @@ class TestDeflate(unittest.TestCase):
 
     def testMain(self):
 
-        def test(i_de, i_start, o_done,
-                 i_din, in_addr, in_en,
-                 o_dout, out_addr, out_en,
-                 clk, reset):
+        def test_data():
+            str_data = " ".join(["Hello World!" for _ in range(100)])
+            b_data = str_data.encode('utf-8')
+            zl_data = zlib.compress(b_data)
+            print("From %d to %d bytes" % (len(b_data), len(zl_data)))
+            print(zl_data)
+            return b_data, zl_data
 
-            @always(delay(5))
-            def drive_clk():
+        def test_decompress(i_de, i_start, o_done,
+                            i_din, in_addr, in_en,
+                            o_dout, out_addr, out_en,
+                            clk, reset):
+
+            def tick():
                 clk.next = not clk
+
+            b_data, zl_data = test_data()
 
             reset.next = 0
             yield delay(5)
             reset.next = 1
             yield delay(5)
 
-            i_din.next = 0xDE
-            in_addr.next = 0
             in_en.next = 1
-            yield clk.negedge
+            for i in range(len(zl_data)):
+                i_din.next = zl_data[i]
+                in_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
             in_en.next = 0
 
             i_start.next = 1
-            yield clk.negedge
+            tick()
+            yield delay(5)
+            tick()
+            yield delay(5)
 
-            out_addr.next = 0
+            while not o_done:
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+                print(now())
+
+            last = out_addr
             out_en.next = 1
-            yield clk.negedge
+            d_data = []
+            for i in range(last + 1):
+                out_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+                d_data.append(bytes([o_dout]))
             out_en.next = 0
 
-            self.assertEqual(i_din, o_dout, "Read matches write")
+            d_data = b''.join(d_data)
 
-        self.runTests(test)
+            self.assertEqual(b_data, d_data, "decompress does NOT match")
+
+        self.runTests(test_decompress)
 
     def runTests(self, test):
         """Helper method to run the actual tests."""
