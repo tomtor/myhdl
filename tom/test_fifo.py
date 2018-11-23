@@ -4,8 +4,8 @@ import os
 from myhdl import instance, block, Signal, ResetSignal,\
     intbv, delay, StopSimulation, now, Simulation, Cosimulation
 
-# COSIMULATION = True
-COSIMULATION = False
+COSIMULATION = True
+# COSIMULATION = False
 
 if not COSIMULATION:
     from fifo import fifo
@@ -30,14 +30,14 @@ class TestFifo(unittest.TestCase):
         def test(dout, din, rd, wr, empty, full, clk, reset):
             def tick():
                 clk.next = not clk
-                print("Clk:%d" % clk.next)
+                # print("Clk:%d" % clk.next)
 
             reset.next = 0
             yield delay(10)
             reset.next = 1
             yield delay(10)
             for val in range(1, TestFifo.cap):
-                print("Write:", val)
+                # print("Write:", val)
                 self.assertTrue(empty == (val == 1))
                 wr.next = 1
                 din.next = val
@@ -58,7 +58,7 @@ class TestFifo(unittest.TestCase):
                 rd.next = 0
                 yield delay(10)
                 self.assertEqual(val, dout, "Read matches write")
-                print("Read:", dout)
+                # print("Read:", dout)
 
         self.runTests(test)
 

@@ -1,6 +1,7 @@
 PYTHON=python3
 
-MODULES=fifo.py
+#MODULES=fifo.py
+MODULES=deflate.py
 
 all: build test
 

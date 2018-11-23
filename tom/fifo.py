@@ -1,7 +1,6 @@
 from math import log2
 
-from myhdl import always, always_seq, instance, block, Signal, ResetSignal, \
-  intbv, modbv, delay, StopSimulation, now, Error, Simulation, traceSignals
+from myhdl import always, block, Signal, intbv, modbv, Error
 
 
 @block
@@ -69,3 +68,5 @@ if __name__ == "__main__":
                Signal(bool(0)), Signal(bool(0)), Signal(bool(0)),
                Signal(bool(0)), Signal(bool(0)), Signal(bool(1)), cap, width)
     f32.convert(name="fifo32_16")
+
+    # f32.verify_convert("icarus")
