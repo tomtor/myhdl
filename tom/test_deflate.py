@@ -5,7 +5,7 @@ import zlib
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation
 
-from deflate import IDLE, WRITE, READ, STARTC, STARTD
+from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
 COSIMULATION = True
 COSIMULATION = False
@@ -67,12 +67,13 @@ class TestDeflate(unittest.TestCase):
             yield delay(5)
             i_mode.next = IDLE
 
+            print(now())
             while not o_done:
                 tick()
                 yield delay(5)
                 tick()
                 yield delay(5)
-                print(now())
+            print(now())
 
             last = o_data
             i_mode.next = READ
@@ -99,8 +100,8 @@ class TestDeflate(unittest.TestCase):
         o_done = Signal(bool(0))
 
         i_data = Signal(intbv()[8:])
-        o_data = Signal(intbv()[16:])
-        i_addr = Signal(intbv()[16:])
+        o_data = Signal(intbv()[LBSIZE:])
+        i_addr = Signal(intbv()[LBSIZE:])
 
         clk = Signal(bool(0))
         reset = ResetSignal(1, 0, True)
