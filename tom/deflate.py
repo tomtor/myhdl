@@ -54,7 +54,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             di.next = di + 1
         dio.next = (dio + width) % 8
 
-    @always(clk.posedge, reset)
+    @always(clk.posedge)
     def logic():
         if not reset:
             state.next = d_state.IDLE
@@ -84,8 +84,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     if get(d1.val, 0, 0, 1):
                         print("final")
                         final.next = True
-                    method.next = get(d1.val, 0, 1, 2)
-                    print("method: %d" % method.next)
+                    i = get(d1.val, 0, 1, 2)
+                    method.next = i
+                    print("method: %d" % i)
                     adv(3)
                     state.next = d_state.TREE
 
@@ -129,17 +130,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     d2 = iram[di+9]
                     codeLength[15].next = get(d1.val, d2.val, 1, 3)
 
+                    di.next = di + 9
+
                     state.next = d_state.IDLE
                     o_done.next = True
 
+                    oram[0].next = method
                     """
-                    if di <= isize:
-                        d1 = iram[di]
-                        oram[di].next = get(d1.val, d1.val, 0, 8)
-                        adv(8)
-                        do.next = di
-                    else:
-                        o_data.next = do
+                    for i in range(len(codeLength)):
+                        oram[i].next = codeLength[i]
                     """
 
             elif i_mode == WRITE:
@@ -152,7 +151,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             elif i_mode == STARTD:
                 di.next = 6  # skip header
                 dio.next = 0
-                # decoding.next = True
                 state.next = d_state.HEADER
 
     return logic
