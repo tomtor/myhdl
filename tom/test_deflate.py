@@ -209,11 +209,14 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
                 d_data[tbi].next = o_data
                 ud = UDATA[tbi]
                 if o_data != ud:
+                    state.next = tb_state.RESET
+                    i_mode.next = IDLE
                     print("FAIL")
-                    raise Error("bad result")
+                    # raise Error("bad result")
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
             else:
+                i_mode.next = IDLE
                 state.next = tb_state.RESET
 
         if counter == 30:
