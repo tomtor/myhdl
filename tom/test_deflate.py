@@ -4,7 +4,7 @@ import zlib
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
-                  always
+                  always, toVerilog, always_comb
 
 from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
@@ -117,7 +117,18 @@ class TestDeflate(unittest.TestCase):
 
 
 @block
-def test_deflate_bench(i_clk, o_led):
+def test_deflate_bench(i_clk, o_led, led0_g):
+
+    d_data = [ Signal(intbv()[8:]) for _ in range(2048) ]
+    b_data, zl_data = test_data()
+
+    TESTDATA = tuple(zl_data)
+    tout = Signal(intbv(0)[8:])
+    taddr = Signal(intbv(0)[8:])
+
+    @always_comb
+    def readtd():
+        tout.next = TESTDATA[int(taddr)]
 
     i_mode = Signal(intbv(0)[3:])
     o_done = Signal(bool(0))
@@ -130,28 +141,29 @@ def test_deflate_bench(i_clk, o_led):
 
     dut = deflate(i_mode, o_done, i_data, o_data, i_addr, i_clk, reset)
 
-    d_data = [ Signal(intbv()[8:]) for _ in range(100) ]
-    b_data, zl_data = test_data()
-    z_data = [ Signal(intbv()[8:]) for i in range(len(zl_data)) ]
-    for i in range(len(zl_data)):
-        z_data[i].next = zl_data[i]
+    scounter = Signal(modbv(0)[24:])
 
     counter = Signal(modbv(0)[16:])
 
     @always(i_clk.posedge)
     def count():
-        counter.next = counter + 1
+        o_led.next = counter
+        if scounter == 0:
+            counter.next = counter + 1
+        scounter.next = scounter + 1
 
     @always(i_clk.posedge)
     def logic():
+        led0_g.next = 0
         if counter == 5:
             reset.next = 0
-            o_led.next = 0
         if counter == 7:
             reset.next = 1
         if counter >=  10 and counter < 50:
+            led0_g.next = 1
             i_mode.next = WRITE
-            i_data.next = z_data[counter - 10]
+            taddr = counter - 10
+            i_data.next = tout
             i_addr.next = counter - 10
         if counter == 50:
             i_mode.next = IDLE
@@ -167,16 +179,16 @@ def test_deflate_bench(i_clk, o_led):
             if counter >= 103:
               d_data[counter-103].next = o_data
         if counter == 150:
-            o_led.next = d_data[0]
             i_mode.next = IDLE
 
         if counter == 1000:
             raise StopSimulation()
 
-    return dut, count, logic
+    return readtd, dut, count, logic
 
 
-tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]))
+tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
+                        Signal(bool(0)))
 
 if not COSIMULATION:
     print("convert:")
