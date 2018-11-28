@@ -120,7 +120,7 @@ class TestDeflate(unittest.TestCase):
 SLOWDOWN = 1
 
 @block
-def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
+def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     d_data = [Signal(intbv()[8:]) for _ in range(2048)]
     u_data, c_data = test_data()
@@ -172,9 +172,12 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
     @always(i_clk.posedge)
     def logic():
 
+      if scounter == 0:
+
         if state == tb_state.RESET:
             led0_g.next = 0
             led1_b.next = 0
+            led2_r.next = 0
             reset.next = 0
             tbi.next = 0
             state.next = tb_state.WRITE
@@ -182,6 +185,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
         elif state == tb_state.WRITE:
             print(tbi)
             reset.next = 1
+            led2_r.next = not led2_r
             i_mode.next = WRITE
             i_data.next = CDATA[tbi]
             i_addr.next = tbi
@@ -219,7 +223,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
                 i_mode.next = IDLE
                 state.next = tb_state.RESET
 
-        if counter == 30:
+        if counter == 100:
             raise StopSimulation()
 
     if SLOWDOWN == 1:
@@ -245,14 +249,14 @@ tclk.convert(initial_values=True)
 
 SLOWDOWN = 24
 tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
-                        Signal(bool(0)), Signal(bool(0)))
+                        Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
 
 tb.convert(initial_values=True)
 
 if not COSIMULATION:
     SLOWDOWN=1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
-                            Signal(bool(0)), Signal(bool(0)))
+                            Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
     print("convert SLOWDOWN: ", SLOWDOWN)
     tb.convert(name="test_fast_bench", initial_values=True)
     os.system("iverilog -o test_deflate " +
