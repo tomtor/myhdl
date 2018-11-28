@@ -16,4 +16,4 @@ icarus:
 	vvp test_fifo
 
 clean:
-	rm -f *.vcd *.v
+	rm -f *.vcd

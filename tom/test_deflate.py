@@ -4,7 +4,7 @@ import zlib
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
-                  always, toVerilog, always_comb
+                  always, toVerilog, always_comb, enum
 
 from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
@@ -17,6 +17,7 @@ else:
     def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         print("Cosimulation")
         cmd = "iverilog -o deflate " + \
+              "dump.v" + \
               "deflate.v " + \
               "tb_deflate.v "
         os.system(cmd)
@@ -153,7 +154,7 @@ def test_deflate_bench(i_clk, o_led, led0_g):
             counter.next = counter + 1
         scounter.next = scounter + 1
 
-    tb_state = myhdl.enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY')
+    tb_state = enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY')
     state = Signal(tb_state.RESET)
 
     tbi = Signal(modbv(0)[15:])
@@ -210,6 +211,8 @@ tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
 if not COSIMULATION:
     print("convert:")
     tb.convert(initial_values=True)
-
-print("Start Unit test")
-unittest.main(verbosity=2)
+    os.system("iverilog -o test_deflate test_deflate_bench.v dump.v;" +
+              "vvp test_deflate")
+else:
+    print("Start Unit test")
+    unittest.main(verbosity=2)
