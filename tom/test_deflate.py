@@ -4,7 +4,7 @@ import zlib
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
-                  always, always_comb, enum
+                  always, always_comb, enum, Error
 
 from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
@@ -120,19 +120,20 @@ class TestDeflate(unittest.TestCase):
 SLOWDOWN = 1
 
 @block
-def test_deflate_bench(i_clk, o_led, led0_g):
+def test_deflate_bench(i_clk, o_led, led0_g, led1_b):
 
     d_data = [Signal(intbv()[8:]) for _ in range(2048)]
-    b_data, zl_data = test_data()
+    u_data, c_data = test_data()
 
-    TESTDATA = tuple(zl_data)
+    CDATA = tuple(c_data)
+    UDATA = tuple(u_data)
 
     """
     tout = Signal(intbv(0)[8:])
     taddr = Signal(intbv(0)[8:])
     @always_comb
     def readtd():
-        tout.next = TESTDATA[int(taddr)]
+        tout.next = CDATA[int(taddr)]
     """
 
     i_mode = Signal(intbv(0)[3:])
@@ -160,7 +161,6 @@ def test_deflate_bench(i_clk, o_led, led0_g):
     def count():
         o_led.next = counter
         if scounter == 0:
-            # print(counter)
             counter.next = counter + 1
         scounter.next = scounter + 1
 
@@ -171,26 +171,27 @@ def test_deflate_bench(i_clk, o_led, led0_g):
 
     @always(i_clk.posedge)
     def logic():
-        led0_g.next = 0
 
         if state == tb_state.RESET:
+            led0_g.next = 0
+            led1_b.next = 0
             reset.next = 0
             tbi.next = 0
             state.next = tb_state.WRITE
 
         elif state == tb_state.WRITE:
             print(tbi)
-            led0_g.next = 1
             reset.next = 1
             i_mode.next = WRITE
-            i_data.next = TESTDATA[tbi]
+            i_data.next = CDATA[tbi]
             i_addr.next = tbi
-            if tbi < len(TESTDATA) - 1:
+            if tbi < len(CDATA) - 1:
                 tbi.next = tbi + 1
             else:
                 state.next = tb_state.DECOMPRESS
 
         elif state == tb_state.DECOMPRESS:
+            led0_g.next = 1
             i_mode.next = STARTD
             state.next = tb_state.WAIT
 
@@ -203,14 +204,19 @@ def test_deflate_bench(i_clk, o_led, led0_g):
                 i_addr.next = 0
 
         elif state == tb_state.VERIFY:
-            if tbi < len(TESTDATA):
-                d_data[tbi].next = o_data  # Should compare here!
+            led1_b.next = 1
+            if tbi < len(CDATA):
+                d_data[tbi].next = o_data
+                ud = UDATA[tbi]
+                if o_data != ud:
+                    print("FAIL")
+                    raise Error("bad result")
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
             else:
                 state.next = tb_state.RESET
 
-        if counter == 1000:
+        if counter == 30:
             raise StopSimulation()
 
     if SLOWDOWN == 1:
@@ -234,14 +240,16 @@ tclk = clkgen(Signal(bool(0)))
 tclk.convert(initial_values=True)
 """
 
+SLOWDOWN = 24
 tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
-                        Signal(bool(0)))
+                        Signal(bool(0)), Signal(bool(0)))
 
-SLOWDOWN=24
 tb.convert(initial_values=True)
 
 if not COSIMULATION:
     SLOWDOWN=1
+    tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
+                            Signal(bool(0)), Signal(bool(0)))
     print("convert SLOWDOWN: ", SLOWDOWN)
     tb.convert(name="test_fast_bench", initial_values=True)
     os.system("iverilog -o test_deflate " +
