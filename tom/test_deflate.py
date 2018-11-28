@@ -4,7 +4,7 @@ import zlib
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
-                  always, toVerilog, always_comb, enum
+                  always, always_comb, enum
 
 from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
@@ -117,6 +117,8 @@ class TestDeflate(unittest.TestCase):
         sim.run(quiet=1)
 
 
+SLOWDOWN = 1
+
 @block
 def test_deflate_bench(i_clk, o_led, led0_g):
 
@@ -144,13 +146,21 @@ def test_deflate_bench(i_clk, o_led, led0_g):
 
     dut = deflate(i_mode, o_done, i_data, o_data, i_addr, i_clk, reset)
 
-    scounter = Signal(modbv(0)[24:])
+    scounter = Signal(modbv(0)[SLOWDOWN:])
     counter = Signal(modbv(0)[16:])
+
+    @instance
+    def clkgen():
+        i_clk.next = 0
+        while True:
+            yield delay(5)
+            i_clk.next = not i_clk
 
     @always(i_clk.posedge)
     def count():
         o_led.next = counter
         if scounter == 0:
+            # print(counter)
             counter.next = counter + 1
         scounter.next = scounter + 1
 
@@ -169,6 +179,7 @@ def test_deflate_bench(i_clk, o_led, led0_g):
             state.next = tb_state.WRITE
 
         elif state == tb_state.WRITE:
+            print(tbi)
             led0_g.next = 1
             reset.next = 1
             i_mode.next = WRITE
@@ -202,16 +213,39 @@ def test_deflate_bench(i_clk, o_led, led0_g):
         if counter == 1000:
             raise StopSimulation()
 
-    return dut, count, logic
+    if SLOWDOWN == 1:
+        return clkgen, dut, count, logic
+    else:
+        return dut, count, logic
 
+
+"""
+@block
+def clkgen(i_clk):
+    @instance
+    def tick():
+        i_clk.next = 0
+        while True:
+            yield delay(5)
+            i_clk.next = not i_clk
+    return tick
+
+tclk = clkgen(Signal(bool(0)))
+tclk.convert(initial_values=True)
+"""
 
 tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                         Signal(bool(0)))
 
+SLOWDOWN=24
+tb.convert(initial_values=True)
+
 if not COSIMULATION:
-    print("convert:")
-    tb.convert(initial_values=True)
-    os.system("iverilog -o test_deflate test_deflate_bench.v dump.v;" +
+    SLOWDOWN=1
+    print("convert SLOWDOWN: ", SLOWDOWN)
+    tb.convert(name="test_fast_bench", initial_values=True)
+    os.system("iverilog -o test_deflate " +
+              "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
 else:
     print("Start Unit test")
