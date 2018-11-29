@@ -39,12 +39,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
     bitLengthCount = [Signal(intbv(0)[3:]) for _ in range(MaxCodeLength)]
+
+    # Max bits is 10:
     nextCode = [Signal(intbv(0)[10:]) for _ in range(MaxCodeLength)]
+    leaves = [Signal(intbv()[16]) for _ in range(1024)]
 
-    Dictionary = [Signal(intbv()[16]) for _ in range(1024)]
-
-    minBits = Signal(intbv()[4:])
-    maxBits = Signal(intbv()[4:])
+    minBits = Signal(intbv()[5:])
+    maxBits = Signal(intbv()[5:])
     instantMask = Signal(intbv()[MaxCodeLength:])
 
     code = Signal(intbv()[15:])
@@ -60,9 +61,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         print("d:%s %s offset: %d dio:%d w:%d"
               % (hex(d1), hex(d2), offset, dio, width))
               """
-        # r = ((d1 << (dio + offset)) & 0xFF) >> (8 - width)
         r = ((((d1 << 8) | d2) << (dio + offset)) & 0xFFFF) >> (16 - width)
-        print(r)
         return r
 
     def adv(width):
@@ -70,7 +69,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             di.next = di + 1
         dio.next = (dio + width) % 8
 
-    def rev_bits(b):
+    def rev_bits(b, nb):
+        if b >= 1 << nb:
+            raise Error("too few bits")
         r = (((b >> 14) & 0x1) << 0) | (((b >> 13) & 0x1) << 1) | \
             (((b >> 12) & 0x1) << 2) | (((b >> 11) & 0x1) << 3) | \
             (((b >> 10) & 0x1) << 4) | (((b >> 9) & 0x1) << 5) | \
@@ -79,23 +80,22 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             (((b >> 4) & 0x1) << 10) | (((b >> 3) & 0x1) << 11) | \
             (((b >> 2) & 0x1) << 12) | (((b >> 1) & 0x1) << 13) | \
             (((b >> 0) & 0x1) << 14)
+        r >>= (15 - nb)
+        """
+        r = 0
+        x = b.val
+        for i in range(0, nb):
+            r <<= 1
+            r |= (x & 1)
+            x >>= 1
+        """
         return r
+
 
     @always(clk.posedge)
     def logic():
-        if not reset or i_mode == RESET:
-            maxBits.next = 0
-            minBits.next = CodeLengths
-            code.next = 0
-            for i in range(CodeLengths):
-                codeLength[i].next = 0
-            for i in range(MaxCodeLength):
-                bitLengthCount[i].next = 0
-                nextCode[i].next = 0
-            for i in range(len(Dictionary)):
-                Dictionary[i].next = 0
+        if not reset:
             state.next = d_state.IDLE
-            di.next = 6
             o_done.next = False
         else:
             if i_mode == IDLE:
@@ -118,25 +118,30 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     """
 
                     d1 = iram[di]
-                    # d2 = iram[di+1]
                     if get(d1.val, 0, 0, 1):
                         print("final")
                         final.next = True
                     i = get(d1.val, 0, 1, 2)
                     method.next = i
                     print("method: %d" % i)
-                    adv(3)
                     state.next = d_state.BL
+
+                    print("Code lengths")
+                    for i in range(6,15):
+                        print(iram[i])
+                    print("End Code lengths")
 
                 elif state == d_state.BL:
 
                     d1 = iram[di]
 
-                    numLiterals.next = 257 + get(d1.val, 0, 0, 5)
+                    numLiterals.next = 257 + get(d1.val, 0, 3, 5)
                     d1 = iram[di+1]
                     d2 = iram[di+2]
                     numDistance.next = 1 + get(d1.val, d2.val, 0, 5)
                     numCodeLength.next = 4 + get(d1.val, d2.val, 5, 4)
+                    print("NCL")
+                    print(int(4 + get(d1.val, d2.val, 5, 4)))
 
                     d1 = iram[di+2]
                     d2 = iram[di+3]
@@ -166,9 +171,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     codeLength[1].next = get(d1.val, d2.val, 12, 3)
                     d1 = iram[di+8]
                     d2 = iram[di+9]
-                    codeLength[15].next = get(d1.val, d2.val, 1, 3)
+                    codeLength[15].next = get(d1.val, d2.val, 7, 3)
 
                     di.next = di + 9
+                    dio.next = 2
 
                     cur_i.next = 0
                     state.next = d_state.HF1
@@ -182,6 +188,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print(cur_i, j, bitLengthCount[j] + 1)
                         cur_i.next = cur_i + 1
                     else:
+                        bitLengthCount[0].next = 0
                         state.next = d_state.HF2
                         cur_i.next = 1
 
@@ -210,7 +217,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     # find bit code for first element of each bitLength group
 
                     if cur_i <= maxBits:
-                        ncode = (code + bitLengthCount[cur_i - 1]) << 1
+                        ncode = ((code + bitLengthCount[cur_i - 1]) << 1)
                         code.next = ncode
                         nextCode[cur_i].next = ncode
                         print(cur_i, ncode)
@@ -230,8 +237,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             nextCode[bits].next = nextCode[bits] + 1
                             if bits > MaxCodeLength:
                                 raise Error("too many bits")
-                            reverse = rev_bits(canonical)
-                            print(canonical, reverse)
+                            reverse = rev_bits(canonical, bits)
+                            print(bits, canonical, reverse)
                         cur_i.next = cur_i + 1
                     else:
                         o_done.next = True
@@ -242,13 +249,30 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     """
 
             elif i_mode == WRITE:
+
                 iram[i_addr].next = i_data
                 isize.next = i_addr
+
             elif i_mode == READ:
+
                 o_data.next = oram[i_addr]
+
             elif i_mode == STARTC:
+
                 raise Error("deflate compress not yet implemented")
+
             elif i_mode == STARTD:
+
+                maxBits.next = 0
+                minBits.next = CodeLengths
+                code.next = 0
+                for i in range(CodeLengths):
+                    codeLength[i].next = 0
+                for i in range(MaxCodeLength):
+                    bitLengthCount[i].next = 0
+                    nextCode[i].next = 0
+                for i in range(len(leaves)):
+                    leaves[i].next = 0
                 di.next = 6  # skip header
                 dio.next = 0
                 state.next = d_state.HEADER
