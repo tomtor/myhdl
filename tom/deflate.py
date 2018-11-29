@@ -8,7 +8,8 @@ IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 BSIZE = 256
 LBSIZE = log2(BSIZE)
 
-d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'DATA')
+d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
+               'DATA')
 
 
 @block
@@ -37,8 +38,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     InstantMaxBit = 10
     EndOfBlock = 256
 
-    codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
-    bitLengthCount = [Signal(intbv(0)[3:]) for _ in range(MaxCodeLength)]
+    #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
+    codeLength = [Signal(intbv()[4:]) for _ in range(288)]
+    bitLengthCount = [Signal(intbv(0)[5:]) for _ in range(MaxCodeLength)]
 
     # Max bits is 10:
     nextCode = [Signal(intbv(0)[10:]) for _ in range(MaxCodeLength)]
@@ -47,6 +49,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     minBits = Signal(intbv()[5:])
     maxBits = Signal(intbv()[5:])
     instantMask = Signal(intbv()[MaxCodeLength:])
+
+    empty = Signal(bool(1))
 
     code = Signal(intbv()[15:])
 
@@ -61,7 +65,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         print("d:%s %s offset: %d dio:%d w:%d"
               % (hex(d1), hex(d2), offset, dio, width))
               """
-        r = ((((d1 << 8) | d2) << (dio + offset)) & 0xFFFF) >> (16 - width)
+        # r = ((((d1 << 8) | d2) << (dio + offset)) & 0xFFFF) >> (16 - width)
+        r = (((d2 << 8) | d1) >> (dio + offset)) & ((1 << width) - 1)
         return r
 
     def adv(width):
@@ -72,6 +77,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     def rev_bits(b, nb):
         if b >= 1 << nb:
             raise Error("too few bits")
+        """
         r = (((b >> 14) & 0x1) << 0) | (((b >> 13) & 0x1) << 1) | \
             (((b >> 12) & 0x1) << 2) | (((b >> 11) & 0x1) << 3) | \
             (((b >> 10) & 0x1) << 4) | (((b >> 9) & 0x1) << 5) | \
@@ -83,13 +89,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         r >>= (15 - nb)
         """
         r = 0
-        x = b.val
-        for i in range(0, nb):
+        x = b & 0xFFFF
+        for _ in range(0, nb):
             r <<= 1
             r |= (x & 1)
             x >>= 1
-        """
         return r
+
+
 
 
     @always(clk.posedge)
@@ -124,12 +131,28 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     i = get(d1.val, 0, 1, 2)
                     method.next = i
                     print("method: %d" % i)
-                    state.next = d_state.BL
+                    if method == 2:
+                        state.next = d_state.BL
+                        print("Code lengths")
+                        for i in range(2,11):
+                            print(iram[i])
+                        print("End Code lengths")
+                    elif method == 1:
+                        dio.next = 3
+                        state.next = d_state.STATIC
 
-                    print("Code lengths")
-                    for i in range(6,15):
-                        print(iram[i])
-                    print("End Code lengths")
+                elif state == d_state.STATIC:
+
+                    for i in range(0, 144):
+                        codeLength[i].next = 8;
+                    for i in range(144, 256):
+                        codeLength[i].next = 9;
+                    for i in range(256, 280):
+                        codeLength[i].next = 7;
+                    for i in range(280, 288):
+                        codeLength[i].next = 8;
+                    cur_i.next = 0
+                    state.next = d_state.HF1
 
                 elif state == d_state.BL:
 
@@ -266,14 +289,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 maxBits.next = 0
                 minBits.next = CodeLengths
                 code.next = 0
-                for i in range(CodeLengths):
+                for i in range(len(codeLength)):
                     codeLength[i].next = 0
                 for i in range(MaxCodeLength):
                     bitLengthCount[i].next = 0
                     nextCode[i].next = 0
                 for i in range(len(leaves)):
                     leaves[i].next = 0
-                di.next = 6  # skip header
+                di.next = 2
                 dio.next = 0
                 state.next = d_state.HEADER
 
