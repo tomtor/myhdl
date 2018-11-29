@@ -128,14 +128,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
     CDATA = tuple(c_data)
     UDATA = tuple(u_data)
 
-    """
-    tout = Signal(intbv(0)[8:])
-    taddr = Signal(intbv(0)[8:])
-    @always_comb
-    def readtd():
-        tout.next = CDATA[int(taddr)]
-    """
-
     i_mode = Signal(intbv(0)[3:])
     o_done = Signal(bool(0))
 
@@ -223,7 +215,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_mode.next = IDLE
                 state.next = tb_state.RESET
 
-        if counter == 100:
             raise StopSimulation()
 
     if SLOWDOWN == 1:
@@ -232,28 +223,13 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-"""
-@block
-def clkgen(i_clk):
-    @instance
-    def tick():
-        i_clk.next = 0
-        while True:
-            yield delay(5)
-            i_clk.next = not i_clk
-    return tick
-
-tclk = clkgen(Signal(bool(0)))
-tclk.convert(initial_values=True)
-"""
-
 SLOWDOWN = 24
 tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                         Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
 
 tb.convert(initial_values=True)
 
-if not COSIMULATION:
+if False:  # not COSIMULATION:
     SLOWDOWN=1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
