@@ -5,7 +5,7 @@ from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 64
+BSIZE = 256
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
@@ -337,7 +337,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             o_done.next = True
                             state.next = d_state.IDLE
                         else:
-                            print(code)
+                            if code < EndOfBlock:
+                                print("B:", code)
+                                oram[do].next = code
+                                do.next = do + 1
+                            else:
+                                print("E:", code)
                             cur_i.next = 0
                             state.next = d_state.NEXT
 
