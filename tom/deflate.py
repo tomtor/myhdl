@@ -1,3 +1,15 @@
+"""
+MyHDL FPGA Deflate (de)compressor, see RFC1951 and https://zlib.net
+
+Copyright 2018 by Tom Vijlbrief
+
+See: https://github.com/tomtor
+
+This MyHDL FPGA implementation is partially inspired by the C++ implementation
+from https://create.stephan-brumme.com/deflate-decoder
+
+"""
+
 from math import log2
 
 from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
@@ -10,6 +22,18 @@ LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
                'SPREAD', 'NEXT', 'INFLATE')
+
+CopyLength = (3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35,
+              43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 )
+
+ExtraLengthBits = (0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+                   3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0)
+
+CopyDistance = (1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+                257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193,
+                12289, 16385, 24577)
+
+ExtraDistanceBits = (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 
 
 @block
@@ -316,7 +340,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print("INIT:", di, dio)
                         if instantMaxBit <= maxBits:
                             d1 = iram[di]
-                            d2 = iram[di+6]
+                            d2 = iram[di+1]
                             compareTo.next = get(d1.val, d2.val, 0, maxBits)
                             cur_i.next  = instantMaxBit
                     elif cur_i <= maxBits:
@@ -333,16 +357,27 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.INFLATE:
 
                         if code == EndOfBlock:
-                            print("EOF")
+                            print("EOF:", di, do)
                             o_done.next = True
+                            o_data.next = do
                             state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
                                 print("B:", code)
                                 oram[do].next = code
                                 do.next = do + 1
+                            elif code == 300:
+                                raise Error("invalid token")
                             else:
-                                print("E:", code)
+                                token = code - 257
+                                length = CopyLength[token]
+                                extraLength = ExtraLengthBits[token]
+                                d1 = iram[di]
+                                d2 = iram[di+1]
+                                length +=  get(d1.val, d2.val, 0, extraLength)
+                                print("E:", token)
+                                if empty:
+                                    distanceCode = 1
                             cur_i.next = 0
                             state.next = d_state.NEXT
 
