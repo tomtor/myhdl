@@ -17,11 +17,11 @@ from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 256
+BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
-               'SPREAD', 'NEXT', 'INFLATE')
+               'SPREAD', 'NEXT', 'INFLATE', 'COPY')
 
 CopyLength = (3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35,
               43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 )
@@ -86,6 +86,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     code = Signal(intbv()[15:])
 
     cur_i = Signal(intbv()[9:])
+    length = Signal(intbv()[9:])
+    offset = Signal(intbv()[LBSIZE:])
     compareTo = Signal(intbv()[9:])
 
     di = Signal(intbv()[LBSIZE:])
@@ -93,17 +95,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     do = Signal(intbv()[LBSIZE:])
 
     def get(d1, d2, offset, width):
-        """
-        print("d:%s %s offset: %d dio:%d w:%d"
-              % (hex(d1), hex(d2), offset, dio, width))
-              """
-        # r = ((((d1 << 8) | d2) << (dio + offset)) & 0xFFFF) >> (16 - width)
         r = (((d2 << 8) | d1) >> (dio + offset)) & ((1 << width) - 1)
         return r
 
+    def get4(d1, d2, d3, d4, offset, width):
+        r = (((d4 << 24) | (d3 << 16) | (d2 << 8) | d1) >> \
+             (dio + offset)) & ((1 << width) - 1)
+        return r
+
     def adv(width):
+        """
         if dio + width > 7:
             di.next = di + 1
+            """
+        di.next = di + ((dio + width) >> 3)
         dio.next = (dio + width) % 8
 
     def rev_bits(b, nb):
@@ -175,12 +180,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     print("method: %d" % i)
                     if method == 2:
                         state.next = d_state.BL
-                        """
-                        print("Code lengths")
-                        for i in range(2,11):
-                            print(iram[i])
-                        print("End Code lengths")
-                        """
                     elif method == 1:
                         dio.next = 3
                         state.next = d_state.STATIC
@@ -366,20 +365,42 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 print("B:", code)
                                 oram[do].next = code
                                 do.next = do + 1
+                                state.next = d_state.NEXT
                             elif code == 300:
                                 raise Error("invalid token")
                             else:
                                 token = code - 257
-                                length = CopyLength[token]
+                                print("E:", token)
+                                tlength = CopyLength[token]
                                 extraLength = ExtraLengthBits[token]
                                 d1 = iram[di]
                                 d2 = iram[di+1]
-                                length +=  get(d1.val, d2.val, 0, extraLength)
-                                print("E:", token)
+                                tlength += get(d1.val, d2.val, 0, extraLength)
                                 if empty:
-                                    distanceCode = 1
+                                    d3 = iram[di+2]
+                                    d4 = iram[di+3]
+                                    t = get4(d1.val, d2.val, d3.val, d4.val, extraLength, 5)
+                                    distanceCode = rev_bits(t, 5)
+                                    distance = CopyDistance[distanceCode]
+                                    moreBits = ExtraDistanceBits[distanceCode >> 1]
+                                    distance += get(d1.val, d2.val, extraLength+5, moreBits)
+                                    adv(extraLength + 5 + moreBits)
+                                    offset.next = do - distance
+                                    length.next = tlength
+                                    state.next = d_state.COPY
+                                else:
+                                    raise Error("TO DO")
                             cur_i.next = 0
-                            state.next = d_state.NEXT
+
+                elif state == d_state.COPY:
+
+                    if cur_i < length:
+                        oram[do].next = oram[offset + cur_i]
+                        cur_i.next = cur_i + 1
+                        do.next = do + 1
+                    else:
+                        cur_i.next = 0
+                        state.next = d_state.NEXT
 
             elif i_mode == WRITE:
 

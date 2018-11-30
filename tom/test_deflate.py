@@ -81,7 +81,7 @@ class TestDeflate(unittest.TestCase):
             last = o_data
             i_mode.next = READ
             d_data = []
-            for i in range(last + 1):
+            for i in range(last):
                 i_addr.next = i
                 tick()
                 yield delay(5)
