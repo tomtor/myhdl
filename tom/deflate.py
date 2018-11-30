@@ -5,11 +5,11 @@ from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 256
+BSIZE = 64
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
-               'SPREAD', 'DATA')
+               'SPREAD', 'NEXT', 'INFLATE')
 
 
 @block
@@ -43,8 +43,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     bitLengthCount = [Signal(intbv(0)[8:]) for _ in range(MaxCodeLength)]
 
     # Max bits is 10:
-    nextCode = [Signal(intbv(0)[10:]) for _ in range(MaxCodeLength)]
-    leaves = [Signal(intbv()[16:]) for _ in range(1024)]
+    CODEBITS = 10
+    BITBITS = 6
+
+    nextCode = [Signal(intbv(0)[CODEBITS:]) for _ in range(MaxCodeLength)]
+
+    leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(1024)]
 
     minBits = Signal(intbv()[5:])
     maxBits = Signal(intbv()[5:])
@@ -58,6 +62,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     code = Signal(intbv()[15:])
 
     cur_i = Signal(intbv()[9:])
+    compareTo = Signal(intbv()[9:])
 
     di = Signal(intbv()[LBSIZE:])
     dio = Signal(intbv()[3:])
@@ -100,15 +105,17 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         return r
 
     def makeLeaf(code, bits):
-        if code >= 1 << (18 - 6):
+        if code >= 1 << CODEBITS:
             raise Error("code too big")
-        if bits >= (1 << 6):
+        if bits >= 1 << BITBITS:
             raise Error("bits too big")
-        return (cur_i << 6) | bits
+        return (cur_i << BITBITS) | bits
 
-    def nextToken():
-        pass
+    def get_bits(leaf):
+        return leaf & ((1 << BITBITS) - 1)
 
+    def get_code(leaf):
+        return leaf >> BITBITS
 
     @always(clk.posedge)
     def logic():
@@ -144,10 +151,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     print("method: %d" % i)
                     if method == 2:
                         state.next = d_state.BL
+                        """
                         print("Code lengths")
                         for i in range(2,11):
                             print(iram[i])
                         print("End Code lengths")
+                        """
                     elif method == 1:
                         dio.next = 3
                         state.next = d_state.STATIC
@@ -288,12 +297,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = cur_i + 1
                     else:
-                        o_done.next = True
-                        state.next = d_state.IDLE
-                    """
-                    for i in range(len(codeLength)):
-                        oram[i].next = codeLength[i]
-                    """
+                        state.next = d_state.NEXT
+                        cur_i.next = 0
 
                 elif state == d_state.SPREAD:
 
@@ -304,6 +309,37 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         state.next = d_state.HF4
                     else:
                         spread.next = spread + step
+
+                elif state == d_state.NEXT:
+
+                    if cur_i == 0:
+                        print("INIT:", di, dio)
+                        if instantMaxBit <= maxBits:
+                            d1 = iram[di]
+                            d2 = iram[di+6]
+                            compareTo.next = get(d1.val, d2.val, 0, maxBits)
+                            cur_i.next  = instantMaxBit
+                    elif cur_i <= maxBits:
+                        mask = (1 << cur_i) - 1
+                        leaf = leaves[compareTo & mask]
+                        if get_bits(leaf) <= cur_i:
+                            adv(get_bits(leaf))
+                            code.next = get_code(leaf)
+                            print("ADV:", di, dio, compareTo, get_bits(leaf))
+                            state.next = d_state.INFLATE
+                    else:
+                        raise Error("no next token")
+
+                elif state == d_state.INFLATE:
+
+                        if code == EndOfBlock:
+                            print("EOF")
+                            o_done.next = True
+                            state.next = d_state.IDLE
+                        else:
+                            print(code)
+                            cur_i.next = 0
+                            state.next = d_state.NEXT
 
             elif i_mode == WRITE:
 
