@@ -64,11 +64,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
     codeLength = [Signal(intbv()[4:]) for _ in range(288)]
-    bitLengthCount = [Signal(intbv(0)[8:]) for _ in range(MaxCodeLength)]
+    bitLengthCount = [Signal(intbv(0)[8:]) for _ in range(MaxCodeLength + 1)]
 
-    # Max bits is 10:
-    CODEBITS = 10
-    BITBITS = 6
+    CODEBITS = MaxCodeLength
+    BITBITS = 9
 
     nextCode = [Signal(intbv(0)[CODEBITS:]) for _ in range(MaxCodeLength)]
 
@@ -85,8 +84,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     code = Signal(intbv()[15:])
 
-    cur_i = Signal(intbv()[9:])
-    length = Signal(intbv()[9:])
+    cur_i = Signal(intbv()[LBSIZE:])
+    length = Signal(intbv()[LBSIZE:])
     offset = Signal(intbv()[LBSIZE:])
     compareTo = Signal(intbv()[9:])
 
@@ -104,17 +103,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         return r
 
     def adv(width):
-        """
-        if dio + width > 7:
-            di.next = di + 1
-            """
         di.next = di + ((dio + width) >> 3)
         dio.next = (dio + width) % 8
 
     def rev_bits(b, nb):
         if b >= 1 << nb:
             raise Error("too few bits")
-        """
         r = (((b >> 14) & 0x1) << 0) | (((b >> 13) & 0x1) << 1) | \
             (((b >> 12) & 0x1) << 2) | (((b >> 11) & 0x1) << 3) | \
             (((b >> 10) & 0x1) << 4) | (((b >> 9) & 0x1) << 5) | \
@@ -124,6 +118,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             (((b >> 2) & 0x1) << 12) | (((b >> 1) & 0x1) << 13) | \
             (((b >> 0) & 0x1) << 14)
         r >>= (15 - nb)
+        return r
         """
         r = 0
         x = b & 0xFFFF
@@ -132,6 +127,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             r |= (x & 1)
             x >>= 1
         return r
+        """
 
     def makeLeaf(code, bits):
         if code >= 1 << CODEBITS:
@@ -178,11 +174,21 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     i = get(d1.val, 0, 1, 2)
                     method.next = i
                     print("method: %d" % i)
-                    if method == 2:
+                    if i == 2:
                         state.next = d_state.BL
-                    elif method == 1:
+                        empty.next = False
                         dio.next = 3
+                    elif i == 1:
                         state.next = d_state.STATIC
+                        dio.next = 3
+                    else:  # ii == 0:
+                        state.next = d_state.COPY
+                        di.next = 0
+                        i = ((iram[4] << 8) | iram[3])
+                        print(iram[0], iram[1], iram[2], iram[3], iram[4], i)
+                        length.next = i
+                        cur_i.next = 0
+                        offset.next = 7
 
                 elif state == d_state.STATIC:
 
@@ -203,12 +209,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     d1 = iram[di]
 
                     numLiterals.next = 257 + get(d1.val, 0, 3, 5)
+                    print("NL:", 257 + get(d1.val, 0, 3, 5))
                     d1 = iram[di+1]
                     d2 = iram[di+2]
                     numDistance.next = 1 + get(d1.val, d2.val, 0, 5)
+                    print("ND:", 1 + get(d1.val, d2.val, 0, 5))
                     numCodeLength.next = 4 + get(d1.val, d2.val, 5, 4)
-                    print("NCL")
-                    print(int(4 + get(d1.val, d2.val, 5, 4)))
+                    print("NCL:", int(4 + get(d1.val, d2.val, 5, 4)))
 
                     d1 = iram[di+2]
                     d2 = iram[di+3]
@@ -262,7 +269,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.HF2:
                     # shortest and longest codes
 
-                    if cur_i < MaxCodeLength:
+                    if cur_i <= MaxCodeLength:
                         if bitLengthCount[cur_i] != 0:
                             if cur_i < minBits:
                                 minBits.next = cur_i
@@ -304,7 +311,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             canonical = nextCode[bits]
                             nextCode[bits].next = nextCode[bits] + 1
                             if bits > MaxCodeLength:
-                                raise Error("too many bits")
+                                raise Error("too many bits: %d" % bits)
+                            print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
                             print(cur_i, bits, canonical, reverse)
                             leaves[reverse].next = makeLeaf(cur_i, bits)
@@ -358,12 +366,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         if code == EndOfBlock:
                             print("EOF:", di, do)
                             o_done.next = True
-                            o_data.next = do
+                            # o_data.next = do
                             state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
                                 print("B:", code)
                                 oram[do].next = code
+                                o_data.next = do + 1
                                 do.next = do + 1
                                 state.next = d_state.NEXT
                             elif code == 300:
@@ -395,12 +404,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.COPY:
 
                     if cur_i < length:
-                        oram[do].next = oram[offset + cur_i]
+                        if method == 0:
+                            oram[do].next = iram[offset + cur_i]
+                        else:
+                            oram[do].next = oram[offset + cur_i]
                         cur_i.next = cur_i + 1
+                        o_data.next = do + 1
                         do.next = do + 1
                     else:
-                        cur_i.next = 0
-                        state.next = d_state.NEXT
+                        if method == 0:
+                            o_done.next = True
+                            state.next = d_state.IDLE
+                        else:
+                            cur_i.next = 0
+                            state.next = d_state.NEXT
 
             elif i_mode == WRITE:
 
@@ -413,10 +430,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif i_mode == STARTC:
 
+                o_done.next = False
                 raise Error("deflate compress not yet implemented")
 
             elif i_mode == STARTD:
 
+                o_done.next = False
                 maxBits.next = 0
                 minBits.next = CodeLengths
                 code.next = 0

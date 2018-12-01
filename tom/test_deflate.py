@@ -1,6 +1,7 @@
 import unittest
 import os
 import zlib
+import random
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
@@ -17,9 +18,9 @@ else:
     def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         print("Cosimulation")
         cmd = "iverilog -o deflate " + \
-              "dump.v" + \
               "deflate.v " + \
               "tb_deflate.v "
+              # "dump.v "
         os.system(cmd)
         return Cosimulation("vvp -m ./myhdl deflate",
                             i_mode=i_mode, o_done=o_done,
@@ -28,8 +29,11 @@ else:
 
 
 def test_data():
-    str_data = " ".join(["Hello World!" for _ in range(100)])
-    b_data = str_data.encode('utf-8')
+    if False:
+        str_data = " ".join(["Hello World! " + str(i) + " " for i in range(100)])
+        b_data = str_data.encode('utf-8')
+    else:
+        b_data = bytes([random.randrange(0,0x100) for i in range(100)])
     zl_data = zlib.compress(b_data)
     print("From %d to %d bytes" % (len(b_data), len(zl_data)))
     print(zl_data)
@@ -200,22 +204,27 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_addr.next = 0
 
         elif state == tb_state.VERIFY:
+            print("VERIFY")
             led1_b.next = 1
-            if tbi < len(CDATA):
+            if tbi < len(UDATA):
                 d_data[tbi].next = o_data
                 ud = UDATA[tbi]
                 if o_data != ud:
                     state.next = tb_state.RESET
                     i_mode.next = IDLE
-                    print("FAIL")
-                    # raise Error("bad result")
+                    print("FAIL", len(UDATA), tbi, ud, o_data)
+                    raise Error("bad result")
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
             else:
+                print(len(UDATA))
+                print("ALL OK!", tbi)
                 i_mode.next = IDLE
                 state.next = tb_state.RESET
+                raise StopSimulation()
 
-            raise StopSimulation()
+            # print("STOP")
+            # raise StopSimulation()
 
     if SLOWDOWN == 1:
         return clkgen, dut, count, logic
@@ -229,7 +238,7 @@ tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
 
 tb.convert(initial_values=True)
 
-if False:  # not COSIMULATION:
+if False: # not COSIMULATION:
     SLOWDOWN=1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
