@@ -20,7 +20,8 @@ IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
-d_state = enum('IDLE', 'HEADER', 'BL', 'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
+d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT',
+               'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
                'SPREAD', 'NEXT', 'INFLATE', 'COPY')
 
 CopyLength = (3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35,
@@ -61,10 +62,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     MaxCodeLength = 15
     InstantMaxBit = 10
     EndOfBlock = 256
+    MaxBitLength = 288
+    MaxToken = 285
+    InvalidToken = 300
 
     #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
     codeLength = [Signal(intbv()[4:]) for _ in range(288)]
     bitLengthCount = [Signal(intbv(0)[8:]) for _ in range(MaxCodeLength + 1)]
+    bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength + 2)]
+    distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     CODEBITS = MaxCodeLength
     BITBITS = 9
@@ -83,6 +89,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     empty = Signal(bool(1))
 
     code = Signal(intbv()[15:])
+    lastToken = Signal(intbv()[15:])
+    howOften = Signal(intbv()[9:])
+    bitLengthSize = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
     length = Signal(intbv()[LBSIZE:])
@@ -176,6 +185,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     print("method: %d" % i)
                     if i == 2:
                         state.next = d_state.BL
+                        bitLengthSize.next = 0
                         empty.next = False
                         dio.next = 3
                     elif i == 1:
@@ -240,18 +250,88 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     d2 = iram[di+8]
                     codeLength[3].next = get(d1.val, d2.val, 0, 3)
                     codeLength[13].next = get(d1.val, d2.val, 3, 3)
-                    codeLength[2].next = get(d1.val, d2.val, 6, 3)
-                    codeLength[14].next = get(d1.val, d2.val, 9, 3)
-                    codeLength[1].next = get(d1.val, d2.val, 12, 3)
-                    d1 = iram[di+8]
-                    d2 = iram[di+9]
-                    codeLength[15].next = get(d1.val, d2.val, 7, 3)
+                    skip = 0
+                    ndio = 6
+                    if numCodeLength > 15:
+                        codeLength[2].next = get(d1.val, d2.val, 6, 3)
+                        ndio = 1
+                        skip = 1
+                    if numCodeLength > 16:
+                        codeLength[14].next = get(d1.val, d2.val, 9, 3)
+                        ndio = 4
+                        skip = 1
+                    if numCodeLength > 17:
+                        codeLength[1].next = get(d1.val, d2.val, 12, 3)
+                        ndio = 7
+                        skip = 1
+                    if numCodeLength > 18:
+                        d1 = iram[di+8]
+                        d2 = iram[di+9]
+                        ndio = 2
+                        skip = 2
+                        codeLength[15].next = get(d1.val, d2.val, 7, 3)
 
-                    di.next = di + 9
-                    dio.next = 2
+                    di.next = di + 8 + skip
+                    dio.next = ndio
 
                     cur_i.next = 0
                     state.next = d_state.HF1
+
+                elif state == d_state.READBL:
+
+                    print("READBL")
+                    if bitLengthSize == 0:
+                        print("INIT READBL")
+                        lastToken.next = 0
+                        howOften.next = 0
+                        # cur_i.next = 0
+
+                    if bitLengthSize < numLiterals + numDistance:
+                        print(bitLengthSize, howOften, code, di)
+                        d1 = iram[di]
+                        d2 = iram[di+1]
+                        i = 0
+                        if code < 16:
+                            howOften.next = 1
+                            lastToken.next = code
+                        elif code == 16:
+                            howOften.next = 3 + get(d1, d2, 0, 2)
+                            i = 2
+                        elif code == 17:
+                            howOften.next = 3 + get(d1, d2, 0, 3)
+                            lastToken.next = 0
+                            i = 3
+                        elif code == 18:
+                            howOften.next = 11 + get(d1, d2, 0, 7)
+                            lastToken.next = 0
+                            i = 7
+                        else:
+                            raise Error("Invalid data")
+                        adv(i)
+
+                        state.next = d_state.REPEAT
+                    else:
+                        print("FILL UP")
+                        for i in range(32):
+                            distanceLength[i].next = bitLength[i + numLiterals]
+                        print(bitLengthSize, numLiterals, MaxBitLength)
+                        # raise Error("FU")
+                        method.next = 3  # Start building bit tree
+                        cur_i.next = 0
+                        state.next = d_state.HF1
+
+                elif state == d_state.REPEAT:
+
+                    print("HOWOFTEN: ", howOften)
+                    if howOften != 0:
+                        bitLength[bitLengthSize].next = lastToken
+                        howOften.next = howOften - 1
+                        bitLengthSize.next = bitLengthSize + 1
+                    elif bitLengthSize < numLiterals + numDistance:
+                        cur_i.next = 0
+                        state.next = d_state.NEXT
+                    else:
+                        state.next = d_state.READBL
 
                 elif state == d_state.HF1:
                     # get frequencies of each bit length and ignore 0's
@@ -344,7 +424,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.NEXT:
 
                     if cur_i == 0:
-                        print("INIT:", di, dio)
+                        print("INIT:", di, dio, instantMaxBit, maxBits)
                         if instantMaxBit <= maxBits:
                             d1 = iram[di]
                             d2 = iram[di+1]
@@ -357,25 +437,36 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             adv(get_bits(leaf))
                             code.next = get_code(leaf)
                             print("ADV:", di, dio, compareTo, get_bits(leaf))
-                            state.next = d_state.INFLATE
+                            if method == 2:
+                                state.next = d_state.READBL
+                            else:
+                                # raise Error("DONE")
+                                state.next = d_state.INFLATE
+                        else:
+                            raise Error("?")
                     else:
                         raise Error("no next token")
 
                 elif state == d_state.INFLATE:
 
-                        if code == EndOfBlock:
+                        if di > isize:
+                            state.next = d_state.IDLE
+                            o_done.next = True
+                            print(di)
+                            raise Error("NO EOF!")
+                        elif code == EndOfBlock:
                             print("EOF:", di, do)
                             o_done.next = True
                             # o_data.next = do
                             state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
-                                print("B:", code)
+                                print("B:", code, di)
                                 oram[do].next = code
                                 o_data.next = do + 1
                                 do.next = do + 1
                                 state.next = d_state.NEXT
-                            elif code == 300:
+                            elif code == InvalidToken:
                                 raise Error("invalid token")
                             else:
                                 token = code - 257

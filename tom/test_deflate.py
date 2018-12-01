@@ -29,7 +29,7 @@ else:
 
 
 def test_data():
-    if False:
+    if True:
         str_data = " ".join(["Hello World! " + str(i) + " " for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
