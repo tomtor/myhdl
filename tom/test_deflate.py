@@ -30,7 +30,8 @@ else:
 
 def test_data():
     if True:
-        str_data = " ".join(["Hello World! " + str(i) + " " for i in range(100)])
+        str_data = " ".join(["Hello World! " + str(i) + " "
+                             for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
         b_data = bytes([random.randrange(0,0x100) for i in range(100)])

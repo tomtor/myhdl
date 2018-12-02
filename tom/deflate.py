@@ -20,8 +20,8 @@ IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
-d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT',
-               'HF1', 'HF2', 'HF3', 'HF4', 'STATIC',
+d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE',
+               'HF1', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT', 'D_INFLATE',
                'SPREAD', 'NEXT', 'INFLATE', 'COPY')
 
 CopyLength = (3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35,
@@ -51,12 +51,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     isize = Signal(intbv()[LBSIZE:])
     state = Signal(d_state.IDLE)
-    method = Signal(intbv()[2:])
+    method = Signal(intbv()[3:])
     final = Signal(bool(0))
 
     numLiterals = Signal(intbv()[9:])
     numDistance = Signal(intbv()[6:])
     numCodeLength = Signal(intbv()[9:])
+    b_numCodeLength = Signal(intbv()[9:])
 
     CodeLengths = 19
     MaxCodeLength = 15
@@ -68,8 +69,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
     codeLength = [Signal(intbv()[4:]) for _ in range(288)]
-    bitLengthCount = [Signal(intbv(0)[8:]) for _ in range(MaxCodeLength + 1)]
-    bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength + 2)]
+    bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength + 1)]
+    bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     CODEBITS = MaxCodeLength
@@ -78,11 +79,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     nextCode = [Signal(intbv(0)[CODEBITS:]) for _ in range(MaxCodeLength)]
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(1024)]
+    d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(32)]
 
     minBits = Signal(intbv()[5:])
     maxBits = Signal(intbv()[5:])
+    d_maxBits = Signal(intbv()[5:])
     instantMaxBit = Signal(intbv()[InstantMaxBit:])
+    d_instantMaxBit = Signal(intbv()[InstantMaxBit:])
     instantMask = Signal(intbv()[MaxCodeLength:])
+    d_instantMask = Signal(intbv()[MaxCodeLength:])
     spread = Signal(intbv(0)[10:])
     step = Signal(intbv(0)[10:])
 
@@ -91,7 +96,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     code = Signal(intbv()[15:])
     lastToken = Signal(intbv()[15:])
     howOften = Signal(intbv()[9:])
-    bitLengthSize = Signal(intbv()[9:])
+    # bitLengthSize = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
     length = Signal(intbv()[LBSIZE:])
@@ -128,22 +133,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             (((b >> 0) & 0x1) << 14)
         r >>= (15 - nb)
         return r
-        """
-        r = 0
-        x = b & 0xFFFF
-        for _ in range(0, nb):
-            r <<= 1
-            r |= (x & 1)
-            x >>= 1
-        return r
-        """
 
-    def makeLeaf(code, bits):
-        if code >= 1 << CODEBITS:
+    def makeLeaf(lcode, lbits):
+        if lcode >= 1 << CODEBITS:
             raise Error("code too big")
-        if bits >= 1 << BITBITS:
+        if lbits >= 1 << BITBITS:
             raise Error("bits too big")
-        return (cur_i << BITBITS) | bits
+        return (lcode << BITBITS) | lbits
 
     def get_bits(leaf):
         return leaf & ((1 << BITBITS) - 1)
@@ -173,7 +169,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print(iram[di])
                         if iram[di] != 0x9c:
                             raise Error("unexpected level")
-                    elif di >= 6:
                     """
 
                     d1 = iram[di]
@@ -185,7 +180,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     print("method: %d" % i)
                     if i == 2:
                         state.next = d_state.BL
-                        bitLengthSize.next = 0
+                        numCodeLength.next = 0
                         empty.next = False
                         dio.next = 3
                     elif i == 1:
@@ -224,7 +219,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     d2 = iram[di+2]
                     numDistance.next = 1 + get(d1.val, d2.val, 0, 5)
                     print("ND:", 1 + get(d1.val, d2.val, 0, 5))
-                    numCodeLength.next = 4 + get(d1.val, d2.val, 5, 4)
+                    b_numCodeLength.next = 4 + get(d1.val, d2.val, 5, 4)
                     print("NCL:", int(4 + get(d1.val, d2.val, 5, 4)))
 
                     d1 = iram[di+2]
@@ -252,42 +247,51 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     codeLength[13].next = get(d1.val, d2.val, 3, 3)
                     skip = 0
                     ndio = 6
-                    if numCodeLength > 15:
+                    if b_numCodeLength > 15:
                         codeLength[2].next = get(d1.val, d2.val, 6, 3)
                         ndio = 1
                         skip = 1
-                    if numCodeLength > 16:
+                    else:
+                        codeLength[2].next = 0
+                    if b_numCodeLength > 16:
                         codeLength[14].next = get(d1.val, d2.val, 9, 3)
                         ndio = 4
                         skip = 1
-                    if numCodeLength > 17:
+                    else:
+                        codeLength[14].next = 0
+                    if b_numCodeLength > 17:
                         codeLength[1].next = get(d1.val, d2.val, 12, 3)
                         ndio = 7
                         skip = 1
-                    if numCodeLength > 18:
+                    else:
+                        codeLength[1].next = 0
+                    if b_numCodeLength > 18:
                         d1 = iram[di+8]
                         d2 = iram[di+9]
                         ndio = 2
                         skip = 2
                         codeLength[15].next = get(d1.val, d2.val, 7, 3)
+                    else:
+                        codeLength[15].next = 0
 
-                    di.next = di + 8 + skip
+                    di.next = di + 7 + skip
                     dio.next = ndio
 
+                    numCodeLength.next = 19
                     cur_i.next = 0
                     state.next = d_state.HF1
 
                 elif state == d_state.READBL:
 
                     print("READBL")
-                    if bitLengthSize == 0:
+                    if numCodeLength == 0:
                         print("INIT READBL")
                         lastToken.next = 0
                         howOften.next = 0
                         # cur_i.next = 0
 
-                    if bitLengthSize < numLiterals + numDistance:
-                        print(bitLengthSize, howOften, code, di)
+                    if numCodeLength < numLiterals + numDistance:
+                        #print(numCodeLength, howOften, code, di)
                         d1 = iram[di]
                         d2 = iram[di+1]
                         i = 0
@@ -307,27 +311,68 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             i = 7
                         else:
                             raise Error("Invalid data")
+
+                        print(numCodeLength, howOften, code, di, i)
                         adv(i)
 
                         state.next = d_state.REPEAT
                     else:
                         print("FILL UP")
+
                         for i in range(32):
-                            distanceLength[i].next = bitLength[i + numLiterals]
-                        print(bitLengthSize, numLiterals, MaxBitLength)
-                        # raise Error("FU")
+                            dbl = 0
+                            if i + numLiterals < numCodeLength:
+                                dbl = int(codeLength[i + numLiterals])
+                            distanceLength[i].next = dbl
+
+                        print(numCodeLength, numLiterals, MaxBitLength)
+
+                        # Fix this to be convertable:
+                        for i in range(numLiterals, MaxBitLength):
+                            codeLength[i].next = 0
+
+                        # raise Error("DO BL!")
                         method.next = 3  # Start building bit tree
                         cur_i.next = 0
                         state.next = d_state.HF1
+
+                        maxBits.next = 0
+                        minBits.next = CodeLengths
+                        code.next = 0
+                        # for i in range(len(codeLength)):
+                            # codeLength[i].next = 0
+                        for i in range(MaxCodeLength):
+                            bitLengthCount[i].next = 0
+                            nextCode[i].next = 0
+
+                elif state == d_state.DISTTREE:
+
+                    """
+                    print("DISTTREE")
+                    for i in range(32):
+                        codeLength[i].next = distanceLength[i]
+                    for i in range(MaxCodeLength):
+                        bitLengthCount[i].next = 0
+                        nextCode[i].next = 0
+                    numCodeLength.next = 32
+                    method.next = 4  # Start building dist tree
+                    d_maxBits.next = 0
+                    minBits.next = CodeLengths
+                    cur_i.next = 0
+                    state.next = d_state.HF1
+                    """
+                    print("SKIP DISTTREE")
+                    cur_i.next = 0
+                    state.next = d_state.NEXT
 
                 elif state == d_state.REPEAT:
 
                     print("HOWOFTEN: ", howOften)
                     if howOften != 0:
-                        bitLength[bitLengthSize].next = lastToken
+                        codeLength[numCodeLength].next = lastToken
                         howOften.next = howOften - 1
-                        bitLengthSize.next = bitLengthSize + 1
-                    elif bitLengthSize < numLiterals + numDistance:
+                        numCodeLength.next = numCodeLength + 1
+                    elif numCodeLength < numLiterals + numDistance:
                         cur_i.next = 0
                         state.next = d_state.NEXT
                     else:
@@ -337,6 +382,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     # get frequencies of each bit length and ignore 0's
 
                     if cur_i < numCodeLength:
+                        print("HF1: ", cur_i, codeLength[cur_i])
                         j = codeLength[cur_i]
                         bitLengthCount[j].next = bitLengthCount[j] + 1
                         print(cur_i, j, bitLengthCount[j] + 1)
@@ -353,16 +399,26 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         if bitLengthCount[cur_i] != 0:
                             if cur_i < minBits:
                                 minBits.next = cur_i
-                            if cur_i > maxBits:
-                                maxBits.next = cur_i
+                            if method == 4:
+                                if cur_i > d_maxBits:
+                                    d_maxBits.next = cur_i
+                            else:
+                                if cur_i > maxBits:
+                                    maxBits.next = cur_i
                         cur_i.next = cur_i + 1
                     else:
                         print(minBits, maxBits)
                         t = InstantMaxBit
-                        if t > int(maxBits):
-                            t = int(maxBits)
-                        instantMaxBit.next = t
-                        instantMask.next = (1 << t) - 1
+                        if method == 4:
+                            if t > int(d_maxBits):
+                                t = int(d_maxBits)
+                            d_instantMaxBit.next = t
+                            d_instantMask.next = (1 << t) - 1
+                        else:
+                            if t > int(maxBits):
+                                t = int(maxBits)
+                            instantMaxBit.next = t
+                            instantMask.next = (1 << t) - 1
                         print((1 << t) - 1)
                         state.next = d_state.HF3
                         cur_i.next = minBits
@@ -371,7 +427,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.HF3:
                     # find bit code for first element of each bitLength group
 
-                    if cur_i <= maxBits:
+                    amb = maxBits
+                    if method == 4:
+                        amb = d_maxBits
+                    if cur_i <= amb:
                         ncode = ((code + bitLengthCount[cur_i - 1]) << 1)
                         code.next = ncode
                         nextCode[cur_i].next = ncode
@@ -395,26 +454,53 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
                             print(cur_i, bits, canonical, reverse)
-                            leaves[reverse].next = makeLeaf(cur_i, bits)
-                            if bits <= instantMaxBit:
-                                if reverse + (1 << bits) <= instantMask:
-                                    step.next = 1 << bits
-                                    spread.next =  reverse + (1 << bits)
-                                    state.next = d_state.SPREAD
+                            if method == 4:
+                                d_leaves[reverse].next = makeLeaf(cur_i, bits)
+                                if bits <= d_instantMaxBit:
+                                    if reverse + (1 << bits) <= d_instantMask:
+                                        step.next = 1 << bits
+                                        spread.next =  reverse + (1 << bits)
+                                        state.next = d_state.SPREAD
+                                    else:
+                                        cur_i.next = cur_i + 1
                                 else:
                                     cur_i.next = cur_i + 1
                             else:
-                                cur_i.next = cur_i + 1
+                                leaves[reverse].next = makeLeaf(cur_i, bits)
+                                if bits <= instantMaxBit:
+                                    if reverse + (1 << bits) <= instantMask:
+                                        step.next = 1 << bits
+                                        spread.next =  reverse + (1 << bits)
+                                        state.next = d_state.SPREAD
+                                    else:
+                                        cur_i.next = cur_i + 1
+                                else:
+                                    cur_i.next = cur_i + 1
                         else:
                             cur_i.next = cur_i + 1
                     else:
-                        state.next = d_state.NEXT
+                        if method == 3:
+                            state.next = d_state.DISTTREE
+                            """
+                        elif method == 4:
+                            # raise Error("DEFLATE m2!")
+                            state.next = d_state.INFLATE
+                            """
+                        else:
+                            state.next = d_state.NEXT
                         cur_i.next = 0
 
                 elif state == d_state.SPREAD:
 
-                    leaves[spread].next = makeLeaf(cur_i, codeLength[cur_i])
+                    if method == 4:
+                        d_leaves[spread].next = makeLeaf(cur_i, codeLength[cur_i])
+                    else:
+                        leaves[spread].next = makeLeaf(cur_i, codeLength[cur_i])
                     # print("SPREAD:", spread, step, instantMask, instantMaxBit)
+                    if method == 4:
+                        aim = d_instantMask
+                    else:
+                        aim = instantMask
                     if spread > instantMask - step:
                         cur_i.next = cur_i + 1
                         state.next = d_state.HF4
@@ -430,10 +516,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             d2 = iram[di+1]
                             compareTo.next = get(d1.val, d2.val, 0, maxBits)
                             cur_i.next  = instantMaxBit
+                        else:
+                            raise Error("???")
                     elif cur_i <= maxBits:
                         mask = (1 << cur_i) - 1
                         leaf = leaves[compareTo & mask]
                         if get_bits(leaf) <= cur_i:
+                            if get_bits(leaf) == 0:
+                                raise Error("0 bits")
                             adv(get_bits(leaf))
                             code.next = get_code(leaf)
                             print("ADV:", di, dio, compareTo, get_bits(leaf))
@@ -442,6 +532,29 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             else:
                                 # raise Error("DONE")
                                 state.next = d_state.INFLATE
+                        else:
+                            raise Error("?")
+                    else:
+                        raise Error("no next token")
+
+                elif state == d_state.D_NEXT:
+
+                    if cur_i == 0:
+                        print("INIT:", di, dio, d_instantMaxBit, d_maxBits)
+                        if d_instantMaxBit <= d_maxBits:
+                            d1 = iram[di]
+                            d2 = iram[di+1]
+                            compareTo.next = get(d1.val, d2.val, 0, d_maxBits)
+                            cur_i.next  = d_instantMaxBit
+                    elif cur_i <= d_maxBits:
+                        mask = (1 << cur_i) - 1
+                        leaf = d_leaves[compareTo & mask]
+                        if get_bits(leaf) <= cur_i:
+                            adv(get_bits(leaf))
+                            code.next = get_code(leaf)
+                            print("D_ADV:", di, dio, compareTo, get_bits(leaf))
+                            raise Error("Next?")
+                            state.next = d_state.D_INFLATE
                         else:
                             raise Error("?")
                     else:
@@ -466,6 +579,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 o_data.next = do + 1
                                 do.next = do + 1
                                 state.next = d_state.NEXT
+                                # raise Error("DF!")
                             elif code == InvalidToken:
                                 raise Error("invalid token")
                             else:
@@ -490,6 +604,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                     state.next = d_state.COPY
                                 else:
                                     raise Error("TO DO")
+                                    distanceCode = 0
                             cur_i.next = 0
 
                 elif state == d_state.COPY:
