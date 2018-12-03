@@ -343,7 +343,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print(numCodeLength, numLiterals, MaxBitLength)
 
                         # Fix this to be convertable:
-                        for i in range(numLiterals, MaxBitLength):
+                        for i in range(numLiterals, len(codeLength)): # MaxBitLength):
                             codeLength[i].next = 0
 
                         # raise Error("DO BL!")
@@ -363,12 +363,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.DISTTREE:
 
                     print("DISTTREE")
-                    for i in range(32):
+                    for i in range(numDistance):
                         codeLength[i].next = distanceLength[i]
                     for i in range(MaxCodeLength):
                         bitLengthCount[i].next = 0
                         nextCode[i].next = 0
-                    numCodeLength.next = 32
+                    numCodeLength.next = numDistance # 32
                     method.next = 4  # Start building dist tree
                     d_maxBits.next = 0
                     minBits.next = CodeLengths
@@ -377,7 +377,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.REPEAT:
 
-                    print("HOWOFTEN: ", howOften)
+                    #print("HOWOFTEN: ", howOften)
                     if howOften != 0:
                         codeLength[numCodeLength].next = lastToken
                         howOften.next = howOften - 1
@@ -490,11 +490,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         if method == 3:
                             state.next = d_state.DISTTREE
-                            """
                         elif method == 4:
-                            # raise Error("DEFLATE m2!")
-                            state.next = d_state.INFLATE
-                            """
+                            print("DEFLATE m2!")
+                            state.next = d_state.NEXT
+                            #state.next = d_state.INFLATE
                         elif method == 2:
                             numCodeLength.next = 0
                             #state.next = d_state.READBL
@@ -511,7 +510,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         leaves[spread].next = makeLeaf(
                             cur_i, codeLength[cur_i])
-                    print("SPREAD:", spread, step, instantMask, instantMaxBit)
+                    #print("SPREAD:", spread, step, instantMask, instantMaxBit)
                     aim = instantMask
                     if method == 4:
                         aim = d_instantMask
@@ -577,7 +576,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.INFLATE:
 
-                        if nb <= 2 or (nb == 3 and dio > 1):
+                        if nb < 4: # nb <= 2 or (nb == 3 and dio > 1):
                             print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
                         elif di > isize:
