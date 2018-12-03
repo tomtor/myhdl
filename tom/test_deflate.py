@@ -30,11 +30,11 @@ else:
 
 def test_data():
     if True:
-        str_data = " ".join(["Hello World! " + str(i) + " "
+        str_data = " ".join(["Hello World! " + str(0) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
-        b_data = bytes([random.randrange(0,0x100) for i in range(100)])
+        b_data = bytes([random.randrange(0,0x100) for i in range(10)])
     zl_data = zlib.compress(b_data)
     print("From %d to %d bytes" % (len(b_data), len(zl_data)))
     print(zl_data)
