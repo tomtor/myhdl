@@ -154,10 +154,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             b2.next = b4
             nb.next = nb - 2
         elif nshift == 3:
+            raise Error("SHIFT3")
             b1.next = b4
             nb.next = nb - 3
         elif nshift == 4:
-            raise Error("SHIFT")
+            raise Error("SHIFT4")
         else:
             pass
 
@@ -219,9 +220,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             raise Error("unexpected level")
                     """
 
-
                     if nb == 4:
-                        print("start:", iram[di], b1)
                         if get2(0, 1):
                             print("final")
                             final.next = True
@@ -239,8 +238,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:  # ii == 0:
                             state.next = d_state.COPY
                             di.next = 0
-                            i = ((iram[4] << 8) | iram[3])
-                            print(iram[0], iram[1], iram[2], iram[3], iram[4], i)
+                            # i = ((iram[4] << 8) | iram[3])
+                            i = ((b3 << 8) | b2)
+                            adv(21)
                             length.next = i
                             cur_i.next = 0
                             offset.next = 7
@@ -641,8 +641,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.INFLATE:
 
-                        if nb <= 3:
-                            print("EXTRA FETCH")
+                        if nb <= 2 or (nb == 3 and dio > 1):
+                            print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
                         elif di > isize:
                             state.next = d_state.IDLE
@@ -691,15 +691,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.COPY:
 
-                    if cur_i < length:
+                    if nb < 4:
+                        pass
+                    elif cur_i < length:
                         if method == 0:
-                            oram[do].next = iram[offset + cur_i]
+                            # oram[do].next = iram[offset + cur_i]
+                            oram[do].next = b4
+                            adv(8)
                         else:
                             oram[do].next = oram[offset + cur_i]
                         cur_i.next = cur_i + 1
                         o_data.next = do + 1
                         do.next = do + 1
                     else:
+                        print("LENGTH: ", length)
                         if method == 0:
                             o_done.next = True
                             state.next = d_state.IDLE
