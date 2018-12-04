@@ -97,7 +97,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     code = Signal(intbv()[15:])
     lastToken = Signal(intbv()[15:])
     howOften = Signal(intbv()[9:])
-    d_extraLength = Signal(intbv()[3:])
+    # d_extraLength = Signal(intbv()[3:])
     # bitLengthSize = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
@@ -133,13 +133,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             b4.next = iram[di+3]
             nb.next = 4
 
-    def get2(offset, width):
-        r = (((b2 << 8) | b1) >> (dio + offset)) & ((1 << width) - 1)
+    def get2(boffset, width):
+        r = (((b2 << 8) | b1) >> (dio + boffset)) & ((1 << width) - 1)
         return r
     
-    def get4(offset, width):
+    def get4(boffset, width):
         r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >> \
-             (dio + offset)) & ((1 << width) - 1)
+             (dio + boffset)) & ((1 << width) - 1)
         return r
 
     def adv(width):
@@ -571,20 +571,45 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         mask = (1 << cur_i) - 1
                         leaf = d_leaves[compareTo & mask]
                         if get_bits(leaf) <= cur_i:
-                            adv(get_bits(leaf))
-                            #code.next = get_code(leaf)
+                            if get_bits(leaf) == 0:
+                                raise Error("0 bits")
                             token = code - 257
                             print("E2:", token)
                             tlength = CopyLength[token]
-                            print("D_ADV:", di, dio, compareTo, get_bits(leaf))
+                            print("tlength:", tlength)
+                            extraLength = ExtraLengthBits[token]
+                            print("extra length bits:", extraLength)
+                            tlength += get4(0, extraLength)
+                            print("extra length:", tlength)
                             distanceCode = get_code(leaf)
+                            print("distance code:", distanceCode)
                             distance = CopyDistance[distanceCode]
+                            print("distance:", distance)
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            distance += get4(d_extraLength + 5, moreBits)
-                            adv(d_extraLength + 5 + moreBits)
+                            print("more bits:", distance)
+                            distance += get4(extraLength + get_bits(leaf), moreBits)
+                            print("distance:", distance)
+                            adv(moreBits + extraLength + get_bits(leaf))
+                            print("advance:", moreBits + extraLength + get_bits(leaf))
                             offset.next = do - distance
                             length.next = tlength
                             state.next = d_state.COPY
+                            """
+                                    token = code - 257
+                                    print("E:", token)
+                                    tlength = CopyLength[token]
+                                    extraLength = ExtraLengthBits[token]
+                                    tlength += get4(0, extraLength)
+                                    t = get4(extraLength, 5)
+                                    distanceCode = rev_bits(t, 5)
+                                    distance = CopyDistance[distanceCode]
+                                    moreBits = ExtraDistanceBits[distanceCode >> 1]
+                                    distance += get4(extraLength + 5, moreBits)
+                                    adv(extraLength + 5 + moreBits)
+                                    offset.next = do - distance
+                                    length.next = tlength
+                                    state.next = d_state.COPY
+                            """
                         else:
                             raise Error("?")
                     else:
@@ -616,13 +641,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             elif code == InvalidToken:
                                 raise Error("invalid token")
                             else:
-                                token = code - 257
-                                print("E:", token)
-                                tlength = CopyLength[token]
-                                extraLength = ExtraLengthBits[token]
-                                d_extraLength.next = extraLength
-                                tlength += get2(0, extraLength)
                                 if empty:
+                                    token = code - 257
+                                    print("E:", token)
+                                    tlength = CopyLength[token]
+                                    extraLength = ExtraLengthBits[token]
+                                    tlength += get4(0, extraLength)
                                     t = get4(extraLength, 5)
                                     distanceCode = rev_bits(t, 5)
                                     distance = CopyDistance[distanceCode]
