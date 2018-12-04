@@ -69,16 +69,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     MaxToken = 285
     InvalidToken = 300
 
-    #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
-    codeLength = [Signal(intbv()[4:]) for _ in range(290)]
-    bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength + 1)]
-    bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
-    distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
-
     CODEBITS = MaxCodeLength
     BITBITS = 9
 
+    #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
+    codeLength = [Signal(intbv()[4:]) for _ in range(290)]
+    bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv(0)[CODEBITS:]) for _ in range(MaxCodeLength)]
+    bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
+    distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(1024)]
     d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(32)]
@@ -98,7 +97,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     code = Signal(intbv()[15:])
     lastToken = Signal(intbv()[15:])
     howOften = Signal(intbv()[9:])
-    d_extraLength = Signal(intbv()[9:])
+    d_extraLength = Signal(intbv()[3:])
     # bitLengthSize = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
@@ -355,10 +354,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         maxBits.next = 0
                         minBits.next = CodeLengths
                         code.next = 0
-                        # for i in range(len(codeLength)):
-                            # codeLength[i].next = 0
-                        for i in range(MaxCodeLength):
+                        for i in range(len(bitLengthCount)):
                             bitLengthCount[i].next = 0
+                        for i in range(len(nextCode)):
                             nextCode[i].next = 0
 
                 elif state == d_state.DISTTREE:
@@ -366,8 +364,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     print("DISTTREE")
                     for i in range(numDistance):
                         codeLength[i].next = distanceLength[i]
-                    for i in range(MaxCodeLength):
+                        print(i, distanceLength[i])
+                    for i in range(numDistance, len(codeLength)):
+                        codeLength[i].next = 0
+                    for i in range(len(bitLengthCount)):
                         bitLengthCount[i].next = 0
+                    for i in range(len(nextCode)):
                         nextCode[i].next = 0
                     numCodeLength.next = numDistance # 32
                     method.next = 4  # Start building dist tree
@@ -432,6 +434,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print((1 << t) - 1)
                         state.next = d_state.HF3
                         cur_i.next = minBits
+                        code.next = 0
                         print("HF3")
 
                 elif state == d_state.HF3:
@@ -632,7 +635,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 else:
                                     # raise Error("TO DO")
                                     state.next = d_state.D_NEXT
-                                    distanceCode = 0
                             cur_i.next = 0
 
                 elif state == d_state.COPY:
