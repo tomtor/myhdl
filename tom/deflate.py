@@ -133,9 +133,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             b4.next = iram[di+3]
             nb.next = 4
 
+    """
     def get2(boffset, width):
         r = (((b2 << 8) | b1) >> (dio + boffset)) & ((1 << width) - 1)
         return r
+    """
     
     def get4(boffset, width):
         r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >> \
@@ -144,6 +146,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     def adv(width):
         nshift = ((dio + width) >> 3)
+        if nshift >= nb:
+            raise Error("Too many!")
         if nshift == 1:
             b1.next = b2
             b2.next = b3
@@ -155,19 +159,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             nb.next = nb - 2
         elif nshift == 3:
             raise Error("SHIFT3")
-            b1.next = b4
-            nb.next = nb - 3
+            # b1.next = b4
+            # nb.next = nb - 3
         elif nshift == 4:
             raise Error("SHIFT4")
         else:
             pass
 
-        dio.next = (dio + width) % 8
+        dio.next = (dio + width) & 0x7  # % 8
         di.next = di + nshift
-        """
-        di.next = di + ((dio + width) >> 3)
-        dio.next = (dio + width) % 8
-        """
 
     def rev_bits(b, nb):
         if b >= 1 << nb:
@@ -232,11 +232,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             state.next = d_state.BL
                             numCodeLength.next = 0
                             empty.next = False
-                            #dio.next = 3
                             adv(3)
                         elif i == 1:
                             state.next = d_state.STATIC
-                            #dio.next = 3
                             adv(3)
                         else:  # ii == 0:
                             state.next = d_state.COPY
@@ -371,7 +369,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         bitLengthCount[i].next = 0
                     for i in range(len(nextCode)):
                         nextCode[i].next = 0
-                    numCodeLength.next = numDistance # 32
+                    numCodeLength.next = 32 # numDistance # 32
                     method.next = 4  # Start building dist tree
                     d_maxBits.next = 0
                     minBits.next = CodeLengths
@@ -532,7 +530,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print("INIT:", di, dio, instantMaxBit, maxBits)
                         if instantMaxBit <= maxBits:
                             compareTo.next = get4(0, maxBits)
-                            cur_i.next  = instantMaxBit
+                            cur_i.next = instantMaxBit
                         else:
                             raise Error("???")
                     elif cur_i <= maxBits:
@@ -565,11 +563,19 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif cur_i == 0:
                         print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
                         if d_instantMaxBit <= d_maxBits:
-                            compareTo.next = get4(0, d_maxBits)
-                            cur_i.next  = d_instantMaxBit
+                            token = code - 257
+                            print("token: ", token)
+                            extraLength = ExtraLengthBits[token]
+                            print("extra length bits:", extraLength)
+                            compareTo.next = get4(extraLength, d_maxBits)
+                            cur_i.next = d_instantMaxBit
+                        else:
+                            raise Error("???")
+
                     elif cur_i <= d_maxBits:
                         mask = (1 << cur_i) - 1
                         leaf = d_leaves[compareTo & mask]
+                        print(cur_i, compareTo, mask, leaf, d_maxBits)
                         if get_bits(leaf) <= cur_i:
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
@@ -586,30 +592,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             distance = CopyDistance[distanceCode]
                             print("distance:", distance)
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            print("more bits:", distance)
+                            print("more bits:", moreBits)
                             distance += get4(extraLength + get_bits(leaf), moreBits)
-                            print("distance:", distance)
+                            print("distance more:", distance)
                             adv(moreBits + extraLength + get_bits(leaf))
                             print("advance:", moreBits + extraLength + get_bits(leaf))
                             offset.next = do - distance
                             length.next = tlength
                             state.next = d_state.COPY
-                            """
-                                    token = code - 257
-                                    print("E:", token)
-                                    tlength = CopyLength[token]
-                                    extraLength = ExtraLengthBits[token]
-                                    tlength += get4(0, extraLength)
-                                    t = get4(extraLength, 5)
-                                    distanceCode = rev_bits(t, 5)
-                                    distance = CopyDistance[distanceCode]
-                                    moreBits = ExtraDistanceBits[distanceCode >> 1]
-                                    distance += get4(extraLength + 5, moreBits)
-                                    adv(extraLength + 5 + moreBits)
-                                    offset.next = do - distance
-                                    length.next = tlength
-                                    state.next = d_state.COPY
-                            """
                         else:
                             raise Error("?")
                     else:
