@@ -179,7 +179,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     def rev_bits(b, nb):
         if b >= 1 << nb:
-            #raise Error("too few bits")
+            raise Error("too few bits")
             print("too few bits")
         r = (((b >> 14) & 0x1) << 0) | (((b >> 13) & 0x1) << 1) | \
             (((b >> 12) & 0x1) << 2) | (((b >> 11) & 0x1) << 3) | \
