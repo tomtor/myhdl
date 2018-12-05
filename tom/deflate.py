@@ -54,7 +54,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     isize = Signal(intbv()[LBSIZE:])
     state = Signal(d_state.IDLE)
     method = Signal(intbv()[3:])
-    final = Signal(bool(0))
+    final = Signal(bool())
 
     numLiterals = Signal(intbv()[9:])
     numDistance = Signal(intbv()[6:])
@@ -75,7 +75,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
     codeLength = [Signal(intbv()[4:]) for _ in range(290)]
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
-    nextCode = [Signal(intbv(0)[CODEBITS:]) for _ in range(MaxCodeLength)]
+    nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
     bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
@@ -89,16 +89,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     d_instantMaxBit = Signal(intbv()[InstantMaxBit:])
     instantMask = Signal(intbv()[MaxCodeLength:])
     d_instantMask = Signal(intbv()[MaxCodeLength:])
-    spread = Signal(intbv(0)[10:])
-    step = Signal(intbv(0)[10:])
+    spread = Signal(intbv()[10:])
+    step = Signal(intbv()[10:])
 
-    static = Signal(bool(1))
+    static = Signal(bool())
 
     code = Signal(intbv()[15:])
     lastToken = Signal(intbv()[15:])
     howOften = Signal(intbv()[9:])
-    # d_extraLength = Signal(intbv()[3:])
-    # bitLengthSize = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
     length = Signal(intbv()[LBSIZE:])
@@ -109,13 +107,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     dio = Signal(intbv()[3:])
     do = Signal(intbv()[LBSIZE:])
 
-    b1 = Signal(intbv(0)[8:])
-    b2 = Signal(intbv(0)[8:])
-    b3 = Signal(intbv(0)[8:])
-    b4 = Signal(intbv(0)[8:])
-    nb = Signal(intbv(0)[3:])
-    fill = Signal(bool(False))
-    wtick = Signal(bool(False))
+    b1 = Signal(intbv()[8:])
+    b2 = Signal(intbv()[8:])
+    b3 = Signal(intbv()[8:])
+    b4 = Signal(intbv()[8:])
+    nb = Signal(intbv()[3:])
+    fill = Signal(bool())
+    wtick = Signal(bool())
 
     @always(clk.posedge)
     def fill_buf():
