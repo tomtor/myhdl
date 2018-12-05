@@ -118,7 +118,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     @always(clk.posedge)
     def fill_buf():
-        if not fill:
+        if not reset or not fill:
             nb.next = 0
         elif nb == 0:
             b1.next = iram[di]
@@ -138,8 +138,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         r = (((b2 << 8) | b1) >> (dio + boffset)) & ((1 << width) - 1)
         return r
     """
-    
+
     def get4(boffset, width):
+        if nb != 4:
+            raise Error("NB")
         r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >> \
              (dio + boffset)) & ((1 << width) - 1)
         return r
@@ -192,7 +194,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         return (lcode << BITBITS) | lbits
 
     def get_bits(leaf):
-        return leaf & ((1 << BITBITS) - 1)
+        r= leaf & ((1 << BITBITS) - 1)
+        #if r == 1:
+        #    raise Error("1 bit")
+        return r
 
     def get_code(leaf):
         return leaf >> BITBITS
@@ -202,6 +207,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if not reset:
             state.next = d_state.IDLE
             o_done.next = False
+            fill.next = False
         else:
             if i_mode == IDLE:
 
@@ -231,9 +237,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         if i == 2:
                             state.next = d_state.BL
                             numCodeLength.next = 0
+                            numLiterals.next = 0
                             empty.next = False
                             adv(3)
                         elif i == 1:
+                            empty.next = True
                             state.next = d_state.STATIC
                             adv(3)
                         else:  # ii == 0:
@@ -372,6 +380,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     numCodeLength.next = 32 # numDistance # 32
                     method.next = 4  # Start building dist tree
                     d_maxBits.next = 0
+                    # d_instantMaxBit.next = 0
+                    # d_instantMask.next = 0
                     minBits.next = CodeLengths
                     cur_i.next = 0
                     state.next = d_state.HF1
@@ -392,6 +402,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.HF1:
                     # get frequencies of each bit length and ignore 0's
 
+                    print("HF1")
                     if cur_i < numCodeLength:
                         j = codeLength[cur_i]
                         bitLengthCount[j].next = bitLengthCount[j] + 1
@@ -405,6 +416,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.HF2:
                     # shortest and longest codes
 
+                    print("HF2")
                     if cur_i <= MaxCodeLength:
                         if bitLengthCount[cur_i] != 0:
                             if cur_i < minBits:
@@ -433,7 +445,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         state.next = d_state.HF3
                         cur_i.next = minBits
                         code.next = 0
-                        print("HF3")
+                        print("to HF3")
 
                 elif state == d_state.HF3:
                     # find bit code for first element of each bitLength group
@@ -582,21 +594,23 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             token = code - 257
                             print("E2:", token)
                             tlength = CopyLength[token]
-                            print("tlength:", tlength)
+                            # print("tlength:", tlength)
                             extraLength = ExtraLengthBits[token]
-                            print("extra length bits:", extraLength)
+                            # print("extra length bits:", extraLength)
                             tlength += get4(0, extraLength)
-                            print("extra length:", tlength)
+                            # print("extra length:", tlength)
                             distanceCode = get_code(leaf)
-                            print("distance code:", distanceCode)
+                            # print("distance code:", distanceCode)
                             distance = CopyDistance[distanceCode]
-                            print("distance:", distance)
+                            # print("distance:", distance)
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            print("more bits:", moreBits)
+                            # print("more bits:", moreBits)
+                            # print("bits:", get_bits(leaf))
                             distance += get4(extraLength + get_bits(leaf), moreBits)
-                            print("distance more:", distance)
+                            # print("distance more:", distance)
                             adv(moreBits + extraLength + get_bits(leaf))
-                            print("advance:", moreBits + extraLength + get_bits(leaf))
+                            # print("advance:", moreBits + extraLength + get_bits(leaf))
+                            print("offset:", do - distance)
                             offset.next = do - distance
                             length.next = tlength
                             state.next = d_state.COPY
@@ -657,7 +671,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         pass
                     elif cur_i < length:
                         if method == 0:
-                            # oram[do].next = iram[offset + cur_i]
                             oram[do].next = b4
                             adv(8)
                         else:
@@ -704,6 +717,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 di.next = 2
                 fill.next = True
                 dio.next = 0
+                do.next = 0
                 state.next = d_state.HEADER
 
     return logic, fill_buf

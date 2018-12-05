@@ -144,44 +144,53 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     dut = deflate(i_mode, o_done, i_data, o_data, i_addr, i_clk, reset)
 
-    scounter = Signal(modbv(0)[SLOWDOWN:])
-    counter = Signal(modbv(0)[16:])
-
-    @instance
-    def clkgen():
-        i_clk.next = 0
-        while True:
-            yield delay(5)
-            i_clk.next = not i_clk
-
-    @always(i_clk.posedge)
-    def count():
-        o_led.next = counter
-        if scounter == 0:
-            counter.next = counter + 1
-        scounter.next = scounter + 1
-
     tb_state = enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY')
     state = Signal(tb_state.RESET)
 
     tbi = Signal(modbv(0)[15:])
 
+    scounter = Signal(modbv(0)[SLOWDOWN:])
+    counter = Signal(modbv(0)[16:])
+
+    @instance
+    def clkgen():
+        reset.next = 0
+        i_clk.next = 0
+        while True:
+            yield delay(5)
+            i_clk.next = not i_clk
+            if state == tb_state.WRITE:
+                reset.next = 1
+
+    @always(i_clk.posedge)
+    def count():
+        if not reset:
+            counter.next = 0
+            scounter.next = 0
+        else:
+            o_led.next = counter
+            if scounter == 0:
+                counter.next = counter + 1
+            scounter.next = scounter + 1
+
     @always(i_clk.posedge)
     def logic():
 
-      if scounter == 0:
-
-        if state == tb_state.RESET:
+        if not reset:
             led0_g.next = 0
             led1_b.next = 0
             led2_r.next = 0
-            reset.next = 0
+            #reset.next = 0
             tbi.next = 0
             state.next = tb_state.WRITE
 
+        elif scounter != 0:
+
+            pass
+
         elif state == tb_state.WRITE:
             print(tbi)
-            reset.next = 1
+            # reset.next = 1
             led2_r.next = not led2_r
             i_mode.next = WRITE
             i_data.next = CDATA[tbi]
@@ -205,7 +214,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_addr.next = 0
 
         elif state == tb_state.VERIFY:
-            print("VERIFY")
+            print("VERIFY", o_data)
             led1_b.next = 1
             if tbi < len(UDATA):
                 d_data[tbi].next = o_data
@@ -224,8 +233,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.RESET
                 raise StopSimulation()
 
-            # print("STOP")
-            # raise StopSimulation()
+        if now() > 100000:
+            raise StopSimulation()
 
     if SLOWDOWN == 1:
         return clkgen, dut, count, logic
@@ -239,12 +248,12 @@ tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
 
 tb.convert(initial_values=True)
 
-if False: # not COSIMULATION:
+if 1: # not COSIMULATION:
     SLOWDOWN=1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
     print("convert SLOWDOWN: ", SLOWDOWN)
-    tb.convert(name="test_fast_bench", initial_values=True)
+    tb.convert(name="test_fast_bench", initial_values=False)
     os.system("iverilog -o test_deflate " +
               "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
