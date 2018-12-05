@@ -29,8 +29,8 @@ else:
 
 
 def test_data():
-    if True:
-        str_data = " ".join(["Hello World! " + str(i) + " "
+    if 1:
+        str_data = " ".join(["Hello World! " + str(1) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
@@ -137,6 +137,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
     o_done = Signal(bool(0))
 
     i_data = Signal(intbv()[8:])
+    u_data = Signal(intbv()[8:])
     o_data = Signal(intbv()[LBSIZE:])
     i_addr = Signal(intbv()[LBSIZE:])
 
@@ -151,6 +152,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     scounter = Signal(modbv(0)[SLOWDOWN:])
     counter = Signal(modbv(0)[16:])
+
+    wtick = Signal(bool(0))
 
     @instance
     def clkgen():
@@ -184,20 +187,20 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             tbi.next = 0
             state.next = tb_state.WRITE
 
-        elif scounter != 0:
-
+        elif SLOWDOWN > 1 and scounter != 0:
+        #elif scounter != 0:
             pass
 
         elif state == tb_state.WRITE:
-            print(tbi)
-            # reset.next = 1
-            led2_r.next = not led2_r
-            i_mode.next = WRITE
-            i_data.next = CDATA[tbi]
-            i_addr.next = tbi
-            if tbi < len(CDATA) - 1:
+            if tbi < len(CDATA):
+                print(tbi)
+                led2_r.next = not led2_r
+                i_mode.next = WRITE
+                i_data.next = CDATA[tbi]
+                i_addr.next = tbi
                 tbi.next = tbi + 1
             else:
+                i_mode.next = IDLE
                 state.next = tb_state.DECOMPRESS
 
         elif state == tb_state.DECOMPRESS:
@@ -206,26 +209,34 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             state.next = tb_state.WAIT
 
         elif state == tb_state.WAIT:
-            i_mode.next = IDLE
-            if o_done:
+            if i_mode == STARTD:
+                print("WAIT")
+                i_mode.next = IDLE
+            elif o_done:
                 state.next = tb_state.VERIFY
-                i_mode.next = READ
                 tbi.next = 0
                 i_addr.next = 0
+                i_mode.next = READ
+                u_data.next = UDATA[0]
+                wtick.next = True
 
         elif state == tb_state.VERIFY:
             print("VERIFY", o_data)
             led1_b.next = 1
-            if tbi < len(UDATA):
+            if wtick:
+                wtick.next = False
+            elif tbi < len(UDATA):
                 d_data[tbi].next = o_data
-                ud = UDATA[tbi]
+                ud = u_data
                 if o_data != ud:
                     state.next = tb_state.RESET
                     i_mode.next = IDLE
                     print("FAIL", len(UDATA), tbi, ud, o_data)
                     raise Error("bad result")
+                u_data.next = UDATA[tbi+1]
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
+                wtick.next = True
             else:
                 print(len(UDATA))
                 print("ALL OK!", tbi)
@@ -233,8 +244,10 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.RESET
                 raise StopSimulation()
 
+        """
         if now() > 100000:
             raise StopSimulation()
+        """
 
     if SLOWDOWN == 1:
         return clkgen, dut, count, logic
@@ -242,14 +255,16 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-SLOWDOWN = 24
-tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
+if not COSIMULATION:
+    SLOWDOWN = 24
+
+    tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                         Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
 
-tb.convert(initial_values=True)
+    tb.convert(initial_values=False)
 
-if 1: # not COSIMULATION:
-    SLOWDOWN=1
+if 0:
+    SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
     print("convert SLOWDOWN: ", SLOWDOWN)
