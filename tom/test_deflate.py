@@ -30,7 +30,8 @@ else:
 
 def test_data():
     if 1:
-        str_data = " ".join(["Hello World! " + str(1) + " "
+        str_data = " ".join(["Hello World! " + str(i) + " "
+        # str_data = " ".join(["Hello World! " + str(random.randrange(0,0x100)) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
@@ -263,7 +264,7 @@ if not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 1:
+if 0:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))

@@ -72,14 +72,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     CODEBITS = MaxCodeLength
     BITBITS = 9
 
-    #codeLength = [Signal(intbv()[4:]) for _ in range(CodeLengths)]
-    codeLength = [Signal(intbv()[4:]) for _ in range(290)]
+    #codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
+    codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+2)]
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
     bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
-    leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(1024)]
+    leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(512)]
     d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(32)]
 
     minBits = Signal(intbv()[5:])
@@ -151,6 +151,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     def adv(width):
         nshift = ((dio + width) >> 3)
+        # print("nshift: ", nshift)
         if nshift >= nb:
             raise Error("Too many!")
         if nshift == 1:
@@ -197,6 +198,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             raise Error("code too big")
         if lbits >= 1 << BITBITS:
             raise Error("bits too big")
+        """
+        if lbits <= 1:
+            raise Error("bits too few")
+        """
         return (lcode << BITBITS) | lbits
 
     def get_bits(aleaf):
@@ -271,8 +276,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         codeLength[i].next = 8;
                     numCodeLength.next = 288
                     cur_i.next = 0
-                    for i in range(len(bitLengthCount)):
-                        bitLengthCount[i].next = 0
+                    #for i in range(len(bitLengthCount)):
+                        #bitLengthCount[i].next = 0
                     state.next = d_state.HF1
 
                 elif state == d_state.BL:
@@ -291,7 +296,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         numCodeLength.next = 0
                         adv(14)
                     else:
-                        if numCodeLength < 19:
+                        if numCodeLength < CodeLengths:
                             i = CodeLengthOrder[numCodeLength]
                             print("CLI: ", i)
                             if numCodeLength < b_numCodeLength:
@@ -301,12 +306,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 print("SKIP")
                                 codeLength[i].next = 0
                             numCodeLength.next = numCodeLength + 1
-
                         else:
-                            numCodeLength.next = 19
+                            numCodeLength.next = CodeLengths
                             cur_i.next = 0
-                            for i in range(len(bitLengthCount)):
-                                bitLengthCount[i].next = 0
+                            #for i in range(len(bitLengthCount)):
+                                #bitLengthCount[i].next = 0
                             state.next = d_state.HF1
 
                 elif state == d_state.READBL:
@@ -363,43 +367,29 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         print(numCodeLength, numLiterals, MaxBitLength)
 
                         # Fix this to be convertable:
-                        for i in range(numLiterals, len(codeLength)): # MaxBitLength):
+                        for i in range(numLiterals, MaxBitLength):
                             codeLength[i].next = 0
+                        numCodeLength.next = MaxBitLength # numLiterals # MaxBitLength
 
                         # raise Error("DO BL!")
                         method.next = 3  # Start building bit tree
                         cur_i.next = 0
-                        for i in range(len(bitLengthCount)):
-                            bitLengthCount[i].next = 0
+                        #for i in range(len(bitLengthCount)):
+                            #bitLengthCount[i].next = 0
                         state.next = d_state.HF1
-
-                        # init HF1
-                        maxBits.next = 0
-                        minBits.next = CodeLengths
-                        code.next = 0
-                        for i in range(len(bitLengthCount)):
-                            bitLengthCount[i].next = 0
-                        for i in range(len(nextCode)):
-                            nextCode[i].next = 0
 
                 elif state == d_state.DISTTREE:
 
                     print("DISTTREE")
-                    for i in range(numDistance):
+                    for i in range(32): # numDistance):
                         codeLength[i].next = distanceLength[i]
                         print(i, distanceLength[i])
-                    for i in range(numDistance, len(codeLength)):
-                        codeLength[i].next = 0
-                    for i in range(len(nextCode)):
-                        nextCode[i].next = 0
+                    #for i in range(numDistance, len(codeLength)):
+                    #    codeLength[i].next = 0
                     numCodeLength.next = 32 # numDistance # 32
                     method.next = 4  # Start building dist tree
-                    d_maxBits.next = 0
-                    #d_instantMaxBit.next = 0
-                    #d_instantMask.next = 0
-                    minBits.next = CodeLengths
-                    for i in range(len(bitLengthCount)):
-                        bitLengthCount[i].next = 0
+                    #for i in range(len(bitLengthCount)):
+                        #bitLengthCount[i].next = 0
                     cur_i.next = 0
                     state.next = d_state.HF1
 
@@ -420,6 +410,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     # get frequencies of each bit length and ignore 0's
 
                     print("HF1")
+                    if cur_i == 0:
+                        print("INIT HF1: ", numCodeLength)
+                        for i in range(len(bitLengthCount)):
+                            bitLengthCount[i].next = 0
                     if cur_i < numCodeLength:
                         j = codeLength[cur_i]
                         bitLengthCount[j].next = bitLengthCount[j] + 1
@@ -429,11 +423,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         bitLengthCount[0].next = 0
                         state.next = d_state.HF2
                         cur_i.next = 1
-                        if method <= 2:
-                            maxBits.next = 0
-                        elif method == 4:
+                        if method == 4:
                             d_maxBits.next = 0
-                        minBits.next = CodeLengths
+                        else:
+                            maxBits.next = 0
+                        minBits.next = MaxCodeLength
 
                 elif state == d_state.HF2:
                     # shortest and longest codes
@@ -501,7 +495,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 raise Error("too many bits: %d" % bits)
                             print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
-                            print(cur_i, bits, canonical, reverse)
+                            print("LEAF: ", cur_i, bits, reverse)
                             if method == 4:
                                 d_leaves[reverse].next = makeLeaf(cur_i, bits)
                                 if bits <= d_instantMaxBit:
@@ -535,7 +529,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             #state.next = d_state.INFLATE
                         elif method == 2:
                             numCodeLength.next = 0
-                            #state.next = d_state.READBL
                             state.next = d_state.NEXT
                         else:
                             state.next = d_state.NEXT
@@ -578,8 +571,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         mask = (1 << cur_i) - 1
                         leaf = leaves[compareTo & mask]
                         if get_bits(leaf) <= cur_i:
-                            if get_bits(leaf) == 0:
-                                raise Error("0 bits")
+                            if get_bits(leaf) <= 1:
+                                print("<= 1 bits: ", get_bits(leaf))
+                                # raise Error("<= 1 bits")
                             adv(get_bits(leaf))
                             if get_code(leaf) == 0:
                                 print("leaf 0")
@@ -588,7 +582,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("ADV:", di, dio, compareTo, get_bits(leaf),
                                   get_code(leaf))
                             if method == 2:
-                                #numCodeLength.next = 0
                                 state.next = d_state.READBL
                             else:
                                 # raise Error("DONE")
@@ -626,28 +619,37 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
                             token = code - 257
-                            print("E2:", token)
+                            print("E2:", token, leaf)
                             tlength = CopyLength[token]
-                            # print("tlength:", tlength)
+                            print("tlength:", tlength)
                             extraLength = ExtraLengthBits[token]
-                            # print("extra length bits:", extraLength)
+                            print("extra length bits:", extraLength)
                             tlength += get4(0, extraLength)
-                            # print("extra length:", tlength)
+                            print("extra length:", tlength)
                             distanceCode = get_code(leaf)
-                            # print("distance code:", distanceCode)
+                            print("distance code:", distanceCode)
                             distance = CopyDistance[distanceCode]
-                            # print("distance:", distance)
+                            print("distance:", distance)
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            # print("more bits:", moreBits)
-                            # print("bits:", get_bits(leaf))
-                            distance += get4(extraLength + get_bits(leaf), moreBits)
-                            # print("distance more:", distance)
+                            print("more bits:", moreBits)
+                            print("bits:", get_bits(leaf))
+                            mored = get4(extraLength + get_bits(leaf), moreBits)
+                            print("mored:", mored)
+                            distance += mored
+                            print("distance more:", distance)
                             adv(moreBits + extraLength + get_bits(leaf))
-                            # print("advance:", moreBits + extraLength + get_bits(leaf))
+                            print("advance:", moreBits + extraLength + get_bits(leaf))
                             print("offset:", do - distance)
+                            print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
+                            """
+                            if distance > do:
+                                distance = int(do)
+                            """
                             offset.next = do - distance
                             length.next = tlength
+                            cur_i.next = 0
                             state.next = d_state.COPY
+
                         else:
                             raise Error("?")
                     else:
@@ -658,7 +660,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         if not fill:
                             fill.next = True
                         elif nb < 4: # nb <= 2 or (nb == 3 and dio > 1):
-                            print("EXTRA FETCH", nb, dio)
+                            # print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
                         elif di > isize:
                             state.next = d_state.IDLE
@@ -724,7 +726,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
-
+                        """
+                        if do > 10:
+                            o_done.next = True
+                            state.next = d_state.IDLE
+                        """
             elif i_mode == WRITE:
 
                 iram[i_addr].next = i_data
@@ -742,16 +748,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             elif i_mode == STARTD:
 
                 o_done.next = False
-                maxBits.next = 0
-                minBits.next = CodeLengths
-                code.next = 0
-                for i in range(len(codeLength)):
-                    codeLength[i].next = 0
-                for i in range(MaxCodeLength):
-                    bitLengthCount[i].next = 0
-                    nextCode[i].next = 0
+                #maxBits.next = 0
+                #minBits.next = MaxCodeLength
+                #code.next = 0
+                #for i in range(len(codeLength)):
+                #    codeLength[i].next = 0
                 for i in range(len(leaves)):
                     leaves[i].next = 0
+                for i in range(len(d_leaves)):
+                    d_leaves[i].next = 0
                 di.next = 2
                 fill.next = True
                 dio.next = 0
