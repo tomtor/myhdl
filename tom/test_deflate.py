@@ -30,8 +30,8 @@ else:
 
 def test_data():
     if 1:
-        str_data = " ".join(["Hello World! " + str(i) + " "
-        # str_data = " ".join(["Hello World! " + str(random.randrange(0,0x100)) + " "
+        # str_data = " ".join(["Hello World! " + str(i) + " "
+        str_data = " ".join([str(random.randrange(0,0x1000)) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
@@ -99,6 +99,7 @@ class TestDeflate(unittest.TestCase):
             d_data = b''.join(d_data)
 
             self.assertEqual(b_data, d_data, "decompress does NOT match")
+            print(len(d_data), len(zl_data))
 
         self.runTests(test_decompress)
 

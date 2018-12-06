@@ -72,15 +72,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     CODEBITS = MaxCodeLength
     BITBITS = 9
 
-    #codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
-    codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+2)]
+    codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+32)]
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
     bitLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(512)]
-    d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(32)]
+    d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(64)]
 
     minBits = Signal(intbv()[5:])
     maxBits = Signal(intbv()[5:])
@@ -135,12 +134,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             if di+3 <= isize:
                 b4.next = iram[di+3]
             nb.next = 4
-
-    """
-    def get2(boffset, width):
-        r = (((b2 << 8) | b1) >> (dio + boffset)) & ((1 << width) - 1)
-        return r
-    """
 
     def get4(boffset, width):
         if nb != 4:
@@ -198,16 +191,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             raise Error("code too big")
         if lbits >= 1 << BITBITS:
             raise Error("bits too big")
-        """
-        if lbits <= 1:
-            raise Error("bits too few")
-        """
         return (lcode << BITBITS) | lbits
 
     def get_bits(aleaf):
         r= aleaf & ((1 << BITBITS) - 1)
-        #if r == 1:
-        #    raise Error("1 bit")
         return r
 
     def get_code(aleaf):
@@ -369,13 +356,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         # Fix this to be convertable:
                         for i in range(numLiterals, MaxBitLength):
                             codeLength[i].next = 0
-                        numCodeLength.next = MaxBitLength # numLiterals # MaxBitLength
+                        numCodeLength.next = MaxBitLength
 
-                        # raise Error("DO BL!")
                         method.next = 3  # Start building bit tree
                         cur_i.next = 0
-                        #for i in range(len(bitLengthCount)):
-                            #bitLengthCount[i].next = 0
                         state.next = d_state.HF1
 
                 elif state == d_state.DISTTREE:
@@ -384,12 +368,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     for i in range(32): # numDistance):
                         codeLength[i].next = distanceLength[i]
                         print(i, distanceLength[i])
-                    #for i in range(numDistance, len(codeLength)):
-                    #    codeLength[i].next = 0
                     numCodeLength.next = 32 # numDistance # 32
                     method.next = 4  # Start building dist tree
-                    #for i in range(len(bitLengthCount)):
-                        #bitLengthCount[i].next = 0
                     cur_i.next = 0
                     state.next = d_state.HF1
 
@@ -621,30 +601,26 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             token = code - 257
                             print("E2:", token, leaf)
                             tlength = CopyLength[token]
-                            print("tlength:", tlength)
+                            # print("tlength:", tlength)
                             extraLength = ExtraLengthBits[token]
-                            print("extra length bits:", extraLength)
+                            # print("extra length bits:", extraLength)
                             tlength += get4(0, extraLength)
-                            print("extra length:", tlength)
+                            # print("extra length:", tlength)
                             distanceCode = get_code(leaf)
-                            print("distance code:", distanceCode)
+                            # print("distance code:", distanceCode)
                             distance = CopyDistance[distanceCode]
-                            print("distance:", distance)
+                            # print("distance:", distance)
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            print("more bits:", moreBits)
-                            print("bits:", get_bits(leaf))
+                            # print("more bits:", moreBits)
+                            # print("bits:", get_bits(leaf))
                             mored = get4(extraLength + get_bits(leaf), moreBits)
-                            print("mored:", mored)
+                            # print("mored:", mored)
                             distance += mored
-                            print("distance more:", distance)
+                            # print("distance more:", distance)
                             adv(moreBits + extraLength + get_bits(leaf))
-                            print("advance:", moreBits + extraLength + get_bits(leaf))
-                            print("offset:", do - distance)
-                            print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
-                            """
-                            if distance > do:
-                                distance = int(do)
-                            """
+                            # print("advance:", moreBits + extraLength + get_bits(leaf))
+                            # print("offset:", do - distance)
+                            # print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
                             offset.next = do - distance
                             length.next = tlength
                             cur_i.next = 0
@@ -726,11 +702,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
-                        """
-                        if do > 10:
-                            o_done.next = True
-                            state.next = d_state.IDLE
-                        """
             elif i_mode == WRITE:
 
                 iram[i_addr].next = i_data
