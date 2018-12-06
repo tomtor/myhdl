@@ -30,8 +30,8 @@ else:
 
 def test_data():
     if 1:
-        # str_data = " ".join(["Hello World! " + str(i) + " "
-        str_data = " ".join([str(random.randrange(0,0x1000)) + " "
+        str_data = " ".join(["Hello World! " + str(i) + " "
+        #str_data = " ".join([str(random.randrange(0,0x1000)) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
@@ -247,7 +247,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 raise StopSimulation()
 
         """
-        if now() > 100000:
+        if now() > 50000:
             raise StopSimulation()
         """
 
@@ -265,7 +265,7 @@ if not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))

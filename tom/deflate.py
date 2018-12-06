@@ -21,7 +21,7 @@ BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE',
-               'HF1', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT', 'D_INFLATE',
+               'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT', 'D_INFLATE',
                'SPREAD', 'NEXT', 'INFLATE', 'COPY')
 
 CodeLengthOrder = ( 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15)
@@ -80,6 +80,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(512)]
     d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(64)]
+    leaf = Signal(intbv()[CODEBITS + BITBITS:])
 
     minBits = Signal(intbv()[5:])
     maxBits = Signal(intbv()[5:])
@@ -296,8 +297,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             numCodeLength.next = CodeLengths
                             cur_i.next = 0
-                            #for i in range(len(bitLengthCount)):
-                                #bitLengthCount[i].next = 0
                             state.next = d_state.HF1
 
                 elif state == d_state.READBL:
@@ -387,13 +386,19 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         state.next = d_state.READBL
 
                 elif state == d_state.HF1:
+
+                    if cur_i < len(bitLengthCount):
+                        bitLengthCount[cur_i].next = 0
+                        cur_i.next = cur_i + 1
+                    else:
+                        print("DID HF1 INIT")
+                        cur_i.next = 0
+                        state.next = d_state.HF1INIT
+
+                elif state == d_state.HF1INIT:
                     # get frequencies of each bit length and ignore 0's
 
                     print("HF1")
-                    if cur_i == 0:
-                        print("INIT HF1: ", numCodeLength)
-                        for i in range(len(bitLengthCount)):
-                            bitLengthCount[i].next = 0
                     if cur_i < numCodeLength:
                         j = codeLength[cur_i]
                         bitLengthCount[j].next = bitLengthCount[j] + 1
@@ -543,17 +548,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         if instantMaxBit <= maxBits:
                             compareTo.next = get4(0, maxBits)
                             cur_i.next = instantMaxBit
+                            wtick.next = True
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")
                     elif cur_i <= maxBits:
                         print("NEXT:", cur_i)
                         mask = (1 << cur_i) - 1
-                        leaf = leaves[compareTo & mask]
-                        if get_bits(leaf) <= cur_i:
-                            if get_bits(leaf) <= 1:
-                                print("<= 1 bits: ", get_bits(leaf))
-                                # raise Error("<= 1 bits")
+                        leaf.next = leaves[compareTo & mask]
+                        if wtick:
+                            wtick.next = False
+                        elif get_bits(leaf) <= cur_i:
+                            if get_bits(leaf) < 1:
+                                print("< 1 bits: ")
+                                raise Error("< 1 bits")
                             adv(get_bits(leaf))
                             if get_code(leaf) == 0:
                                 print("leaf 0")
@@ -588,14 +596,17 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("extra length bits:", extraLength)
                             compareTo.next = get4(extraLength, d_maxBits)
                             cur_i.next = d_instantMaxBit
+                            wtick.next = True
                         else:
                             raise Error("???")
 
                     elif cur_i <= d_maxBits:
                         mask = (1 << cur_i) - 1
-                        leaf = d_leaves[compareTo & mask]
+                        leaf.next = d_leaves[compareTo & mask]
                         print(cur_i, compareTo, mask, leaf, d_maxBits)
-                        if get_bits(leaf) <= cur_i:
+                        if wtick:
+                            wtick.next = False
+                        elif get_bits(leaf) <= cur_i:
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
                             token = code - 257
