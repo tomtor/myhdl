@@ -113,7 +113,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     b3 = Signal(intbv()[8:])
     b4 = Signal(intbv()[8:])
     nb = Signal(intbv()[3:])
-    fill = Signal(bool())
+    filled = Signal(bool())
+    wait_data = Signal(bool())
 
     """
     wtick = Signal(bool())
@@ -122,24 +123,49 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     @always(clk.posedge)
     def fill_buf():
-        if not reset or not fill:
+        if not reset or wait_data:
             nb.next = 0
-        elif nb == 0:
+            old_di.next = 0
+            b1.next = 0
+            b2.next = 0
+            b3.next = 0
+            b4.next = 0
+        elif not filled and nb == 4:
+            delta = di - old_di
+            if delta == 1:
+                b1.next = b2
+                b2.next = b3
+                b3.next = b4
+                b4.next = iram[di+3]
+            elif delta == 2:
+                b1.next = b3
+                b2.next = b4
+                b3.next = iram[di+2]
+            elif delta == 3:
+                b1.next = b4
+                b2.next = iram[di+1]
+            else:
+                pass
+            nb.next = nb - delta + 1
+        elif not filled or nb == 0:
             b1.next = iram[di]
             nb.next = 1
-        elif nb == 1:
+        elif not filled or nb == 1:
             b2.next = iram[di+1]
             nb.next = 2
-        elif nb == 2:
+        elif not filled or nb == 2:
             b3.next = iram[di+2]
             nb.next = 3
-        elif nb == 3:
+        elif not filled or nb == 3:
             b4.next = iram[di+3]
             nb.next = 4
+        else:
+            pass
         old_di.next = di
 
     def get4(boffset, width):
         if nb != 4:
+            print("----NB----")
             raise Error("NB")
         r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
              (dio + boffset)) & ((1 << width) - 1)
@@ -147,33 +173,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     def adv(width):
         nshift = ((dio + width) >> 3)
-        # print("nshift: ", nshift)
-        if nshift >= nb:
-            raise Error("Too many!")
-        if nshift == 1:
-            b1.next = b2
-            b2.next = b3
-            b3.next = b4
-            nb.next = nb - 1
-        elif nshift == 2:
-            b1.next = b3
-            b2.next = b4
-            nb.next = nb - 2
-        elif nshift == 3:
-            b1.next = b4
-            nb.next = nb - 3
-        elif nshift == 4:
-            raise Error("SHIFT4")
-        else:
-            pass
-        """
-        """
+        print("nshift: ", nshift)
 
         dio.next = (dio + width) & 0x7
         di.next = di + nshift
 
         if nshift != 0:
-            fill.next = False
+            filled.next = False
 
     def rev_bits(b, nb):
         if b >= 1 << nb:
@@ -209,7 +215,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if not reset:
             state.next = d_state.IDLE
             o_done.next = False
-            fill.next = False
+            #filled.next = False
+            wait_data.next = True
         else:
             if i_mode == IDLE:
 
@@ -229,8 +236,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             raise Error("unexpected level")
                     """
 
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     else:
@@ -278,8 +285,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.BL:
 
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     elif numLiterals == 0:
@@ -309,19 +316,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.READBL:
 
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
-                        pass
-                    elif numCodeLength == 0:
-                        print("INIT READBL")
-                        lastToken.next = 0
-                        howOften.next = 0
-                        # cur_i.next = 0
-                    else:
-                        print("READBL")
-
-                    if nb < 4:
                         pass
                     elif numCodeLength < numLiterals + numDistance:
                         print(numLiterals + numDistance, numCodeLength,
@@ -388,7 +385,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.REPEAT:
 
-                    print("HOWOFTEN: ", howOften)
+                    print("HOWOFTEN: ", numCodeLength, howOften)
                     if howOften != 0:
                         codeLength[numCodeLength].next = lastToken
                         howOften.next = howOften - 1
@@ -552,8 +549,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.NEXT:
 
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     elif cur_i == 0:
@@ -593,8 +590,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.D_NEXT:
 
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     elif cur_i == 0:
@@ -652,8 +649,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.INFLATE:
 
-                        if not fill:
-                            fill.next = True
+                        if not filled:
+                            filled.next = True
                         elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
                             # print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
@@ -702,8 +699,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.COPY:
 
                     """ PIPELINED?
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     elif method != 0 and cur_i == 0:
@@ -733,8 +730,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             cur_i.next = 0
                             state.next = d_state.NEXT
                             """
-                    if not fill:
-                        fill.next = True
+                    if not filled:
+                        filled.next = True
                     elif nb < 4:
                         pass
                     elif cur_i < length:
@@ -777,7 +774,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 for i in range(len(d_leaves)):
                     d_leaves[i].next = 0
                 di.next = 2
-                fill.next = True
+                #filled.next = True
+                wait_data.next = False
                 dio.next = 0
                 do.next = 0
                 state.next = d_state.HEADER
