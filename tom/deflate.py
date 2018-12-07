@@ -556,7 +556,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             cur_i.next = instantMaxBit
                             mask = (1 << instantMaxBit) - 1
                             leaf.next = leaves[cto & mask]
-                            print(cur_i, compareTo, mask, leaf, d_maxBits)
+                            print(cur_i, compareTo, mask, leaf, maxBits)
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")

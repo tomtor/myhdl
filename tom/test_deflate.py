@@ -181,11 +181,10 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
     @always(i_clk.posedge)
     def logic():
 
-        if not reset:
+        if not reset or state == tb_state.RESET:
             led0_g.next = 0
             led1_b.next = 0
             led2_r.next = 0
-            #reset.next = 0
             tbi.next = 0
             state.next = tb_state.WRITE
 
@@ -265,7 +264,7 @@ if not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
