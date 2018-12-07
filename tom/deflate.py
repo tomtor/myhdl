@@ -546,19 +546,18 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif cur_i == 0:
                         print("INIT:", di, dio, instantMaxBit, maxBits)
                         if instantMaxBit <= maxBits:
-                            compareTo.next = get4(0, maxBits)
+                            cto = get4(0, maxBits)
+                            compareTo.next = cto
                             cur_i.next = instantMaxBit
-                            wtick.next = True
+                            mask = (1 << instantMaxBit) - 1
+                            leaf.next = leaves[cto & mask]
+                            print(cur_i, compareTo, mask, leaf, d_maxBits)
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")
                     elif cur_i <= maxBits:
                         print("NEXT:", cur_i)
-                        mask = (1 << cur_i) - 1
-                        leaf.next = leaves[compareTo & mask]
-                        if wtick:
-                            wtick.next = False
-                        elif get_bits(leaf) <= cur_i:
+                        if get_bits(leaf) <= cur_i:
                             if get_bits(leaf) < 1:
                                 print("< 1 bits: ")
                                 raise Error("< 1 bits")
@@ -594,19 +593,24 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("token: ", token)
                             extraLength = ExtraLengthBits[token]
                             print("extra length bits:", extraLength)
-                            compareTo.next = get4(extraLength, d_maxBits)
+                            cto = get4(extraLength, d_maxBits)
+                            compareTo.next = cto
                             cur_i.next = d_instantMaxBit
-                            wtick.next = True
+                            mask = (1 << d_instantMaxBit) - 1
+                            leaf.next = d_leaves[cto & mask]
+                            print(cur_i, compareTo, mask, leaf, d_maxBits)
                         else:
                             raise Error("???")
 
                     elif cur_i <= d_maxBits:
+                        """
                         mask = (1 << cur_i) - 1
                         leaf.next = d_leaves[compareTo & mask]
                         print(cur_i, compareTo, mask, leaf, d_maxBits)
                         if wtick:
                             wtick.next = False
-                        elif get_bits(leaf) <= cur_i:
+                        """
+                        if get_bits(leaf) <= cur_i:
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
                             token = code - 257
