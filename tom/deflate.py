@@ -603,13 +603,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             raise Error("???")
 
                     elif cur_i <= d_maxBits:
-                        """
-                        mask = (1 << cur_i) - 1
-                        leaf.next = d_leaves[compareTo & mask]
-                        print(cur_i, compareTo, mask, leaf, d_maxBits)
-                        if wtick:
-                            wtick.next = False
-                        """
                         if get_bits(leaf) <= cur_i:
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
@@ -717,6 +710,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
+
             elif i_mode == WRITE:
 
                 iram[i_addr].next = i_data
