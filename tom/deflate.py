@@ -20,7 +20,7 @@ IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
-d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE',
+d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT', 'D_INFLATE',
                'SPREAD', 'NEXT', 'INFLATE', 'COPY')
 
@@ -352,14 +352,19 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                         print(numCodeLength, numLiterals, MaxBitLength)
 
-                        # Fix this to be convertable:
-                        for i in range(numLiterals, MaxBitLength):
-                            codeLength[i].next = 0
-                        numCodeLength.next = MaxBitLength
+                        cur_i.next = numLiterals
+                        state.next = d_state.INIT3
 
-                        method.next = 3  # Start building bit tree
-                        cur_i.next = 0
-                        state.next = d_state.HF1
+                elif state == d_state.INIT3:
+
+                        if cur_i < MaxBitLength:
+                            codeLength[cur_i].next = 0
+                            cur_i.next = cur_i + 1
+                        else:
+                            numCodeLength.next = MaxBitLength
+                            method.next = 3  # Start building bit tree
+                            cur_i.next = 0
+                            state.next = d_state.HF1
 
                 elif state == d_state.DISTTREE:
 
