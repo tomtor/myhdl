@@ -120,7 +120,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     wait_data = Signal(bool())
 
     ob1 = Signal(intbv()[8:])
-    ob2 = Signal(intbv()[8:])
+    putbyte = Signal(intbv()[8:])
+    flush = Signal(bool(0))
 
     """
     wtick = Signal(bool())
@@ -194,13 +195,32 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             filled.next = False
 
     def put(d, width):
+        if width > 9:
+            raise Error("width > 9")
         print("put:", d, width, do, doo)
         pshift = ((doo + width) >> 3)
         print("pshift: ", pshift)
-        ob1.next = (ob1 << width) | d
-        print("ob1: ", ob1)
+        if pshift:
+            putbyte.next = ((ob1 << width) | d) & 0xFF
+            o_data.next = do
+            do.next = do + 1
+            carry = width - (8 - doo)
+            ob1.next = d >> carry
+        else:
+            if d >= (1 << width):
+                raise Error("put too wide")
+            ob1.next = (ob1 << width) | d
         do.next = do + pshift
-        doo.next = (doo + width) & 0x7
+        doo_next = (doo + width) & 0x7
+        flush.next = (doo_next == 0) 
+        doo.next= doo_next
+
+    def do_flush():
+        print("FLUSH")
+        flush.next = False
+        ob1.next = 0
+        o_data.next = do
+        do.next = do + 1
 
     def rev_bits(b, nb):
         if b >= 1 << nb:
@@ -300,19 +320,46 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.CSTATIC:
 
-                    print("CSTATIC")
+                    print("CSTATIC", cur_i, do, isize)
                     if cur_i == 0:
-                        oram[cur_i].next = 0x78
+                        flush.next = False
+                        ob1.next = 0
+                        oram[0].next = 0x78
                     elif cur_i == 1:
-                        oram[cur_i].next = 0x9c
+                        oram[1].next = 0x9c
+                        do.next = 2
                     elif cur_i == 2:
                         put(0x3, 3)
-                    else:
+                    elif flush:
+                        oram[do].next = ob1
+                        do_flush()
+                    elif cur_i - 3 > isize:
+                        if cur_i - 3 == isize + 1:
+                            print("Put EOF")
+                            i = EndOfBlock
+                            outlen = codeLength[i]
+                            codeoffset = i - nextCode[outlen]
+                            theleaf = leaves[nextCode[outlen] + codeoffset]
+                            outbits = get_code(theleaf)
+                            print("EOF BITS:", i, outlen, outbits)
+                            put(outbits, outlen)
+                        oram[do].next = ob1
                         o_done.next = True
-                        o_data.next = cur_i
-
+                        o_data.next = do + 1
+                        if not flush:
+                            state.next = d_state.IDLE
+                        else:
+                            print("FLUSH EOF")
+                    else:
+                        bdata = iram[cur_i - 3]
+                        outlen = codeLength[bdata]
+                        codeoffset = bdata - nextCode[outlen]
+                        theleaf = leaves[nextCode[outlen] + codeoffset]
+                        outbits = get_code(theleaf)
+                        print("BITS:", bdata, outlen, outbits)
+                        put(outbits, outlen)
+                        oram[do].next = ob1
                     cur_i.next = cur_i + 1
-
 
                 elif state == d_state.STATIC:
 

@@ -32,7 +32,7 @@ def test_data():
     if 1:
         str_data = " ".join(["Hello World! " + str(i) + " "
         #str_data = " ".join([str(random.randrange(0,0x1000)) + " "
-                             for i in range(100)])
+                             for i in range(1)])
         b_data = str_data.encode('utf-8')
     else:
         b_data = bytes([random.randrange(0,0x100) for i in range(100)])
@@ -143,6 +143,7 @@ class TestDeflate(unittest.TestCase):
                 c_data.append(bytes([o_data]))
             i_mode.next = IDLE
 
+            print("b_data:", len(b_data), b_data)
             print("c_data:", len(c_data), c_data)
 
         self.runTests(test_decompress)
