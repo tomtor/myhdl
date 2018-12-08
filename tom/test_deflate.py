@@ -55,10 +55,13 @@ class TestDeflate(unittest.TestCase):
             b_data, zl_data = test_data()
 
             reset.next = 0
+            tick()
             yield delay(5)
             reset.next = 1
+            tick()
             yield delay(5)
 
+            print("WRITE")
             i_mode.next = WRITE
             for i in range(len(zl_data)):
                 i_data.next = zl_data[i]
@@ -69,6 +72,7 @@ class TestDeflate(unittest.TestCase):
                 yield delay(5)
             i_mode.next = IDLE
 
+            print("STARTD")
             i_mode.next = STARTD
             tick()
             yield delay(5)
@@ -100,6 +104,46 @@ class TestDeflate(unittest.TestCase):
 
             self.assertEqual(b_data, d_data, "decompress does NOT match")
             print(len(d_data), len(zl_data))
+
+            print("==========COMPRESS TEST=========")
+            i_mode.next = WRITE
+            for i in range(len(b_data)):
+                i_data.next = b_data[i]
+                i_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+            i_mode.next = IDLE
+
+            i_mode.next = STARTC
+            tick()
+            yield delay(5)
+            tick()
+            yield delay(5)
+            i_mode.next = IDLE
+
+            print(now())
+            while not o_done:
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+            print(now())
+
+            last = o_data
+            i_mode.next = READ
+            c_data = []
+            for i in range(last):
+                i_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+                c_data.append(bytes([o_data]))
+            i_mode.next = IDLE
+
+            print("c_data:", len(c_data), c_data)
 
         self.runTests(test_decompress)
 
@@ -271,7 +315,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-if not COSIMULATION:
+if 0: # not COSIMULATION:
     SLOWDOWN = 18 # 24
 
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
@@ -279,7 +323,7 @@ if not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 1:
+if 0:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
