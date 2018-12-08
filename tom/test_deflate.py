@@ -147,13 +147,15 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     dut = deflate(i_mode, o_done, i_data, o_data, i_addr, i_clk, reset)
 
-    tb_state = enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY')
+    tb_state = enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY', 'PAUSE')
     state = Signal(tb_state.RESET)
 
     tbi = Signal(modbv(0)[15:])
 
     scounter = Signal(modbv(0)[SLOWDOWN:])
     counter = Signal(modbv(0)[16:])
+
+    resume = Signal(modbv(0)[18:])
 
     wtick = Signal(bool(0))
 
@@ -189,7 +191,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             state.next = tb_state.WRITE
 
         elif SLOWDOWN > 1 and scounter != 0:
-        #elif scounter != 0:
             pass
 
         elif state == tb_state.WRITE:
@@ -215,6 +216,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_mode.next = IDLE
             elif o_done:
                 state.next = tb_state.VERIFY
+                led0_g.next = 0
                 tbi.next = 0
                 i_addr.next = 0
                 i_mode.next = READ
@@ -234,6 +236,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                     i_mode.next = IDLE
                     print("FAIL", len(UDATA), tbi, ud, o_data)
                     raise Error("bad result")
+                    state.next = tb_state.PAUSE
                 u_data.next = UDATA[tbi+1]
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
@@ -241,9 +244,18 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             else:
                 print(len(UDATA))
                 print("ALL OK!", tbi)
+                led0_g.next = 1
                 i_mode.next = IDLE
+                state.next = tb_state.PAUSE
+                resume.next = 1
+                # raise StopSimulation()
+
+        elif state == tb_state.PAUSE:
+            if resume == 0:
+                print("--------------RESET-------------")
                 state.next = tb_state.RESET
-                raise StopSimulation()
+            else:
+                resume.next = resume + 1
 
         """
         if now() > 50000:

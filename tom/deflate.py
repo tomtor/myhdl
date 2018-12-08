@@ -223,7 +223,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         else:
             if i_mode == IDLE:
 
-                if state == d_state.HEADER:
+                if state == d_state.IDLE:
+
+                    wait_data.next = True
+
+                elif state == d_state.HEADER:
 
                     """
                     # Read block header
@@ -260,7 +264,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             static.next = True
                             state.next = d_state.STATIC
                             adv(3)
-                        else:  # ii == 0:
+                        elif i == 0:
                             state.next = d_state.COPY
                             skip = 8 - dio
                             if skip <= 2:
@@ -271,6 +275,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             length.next = i
                             cur_i.next = 0
                             offset.next = 7
+                        else:
+                            print("Bad method")
+                            raise Error("Bad method")
 
                 elif state == d_state.STATIC:
 
@@ -403,7 +410,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                     if cur_i < len(bitLengthCount):
                         bitLengthCount[cur_i].next = 0
+                    if cur_i < len(d_leaves):
+                        d_leaves[cur_i].next = 0
+                    if method != 4:
+                        leaves[cur_i].next = 0
+                    limit = len(leaves)
+                    if method == 4:
+                        limit = len(d_leaves)
+                    if cur_i < limit:
                         cur_i.next = cur_i + 1
+                        """
+                    if cur_i < len(bitLengthCount):
+                        bitLengthCount[cur_i].next = 0
+                        cur_i.next = cur_i + 1
+                    """
                     else:
                         print("DID HF1 INIT")
                         cur_i.next = 0
@@ -671,7 +691,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
-                                print("B:", code, di)
+                                print("B:", code, di, do)
                                 oram[do].next = code
                                 o_data.next = do + 1
                                 do.next = do + 1
@@ -777,15 +797,17 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             elif i_mode == STARTD:
 
                 o_done.next = False
+                """
                 for i in range(len(leaves)):
                     leaves[i].next = 0
                 for i in range(len(d_leaves)):
                     d_leaves[i].next = 0
+                    """
                 di.next = 2
-                filled.next = True
-                wait_data.next = False
                 dio.next = 0
                 do.next = 0
+                filled.next = True
+                wait_data.next = False
                 state.next = d_state.HEADER
 
     return logic, fill_buf
