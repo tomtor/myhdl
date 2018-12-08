@@ -146,6 +146,52 @@ class TestDeflate(unittest.TestCase):
             print("b_data:", len(b_data), b_data)
             print("c_data:", len(c_data), c_data)
 
+            print("WRITE COMPRESSED RESULT")
+            i_mode.next = WRITE
+            for i in range(len(c_data)):
+                i_data.next = c_data[i]
+                i_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+            i_mode.next = IDLE
+
+            print("STARTD after Compress")
+            i_mode.next = STARTD
+            tick()
+            yield delay(5)
+            tick()
+            yield delay(5)
+            i_mode.next = IDLE
+
+            print(now())
+            while not o_done:
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+            print(now())
+
+            last = o_data
+            i_mode.next = READ
+            d_data = []
+            for i in range(last):
+                i_addr.next = i
+                tick()
+                yield delay(5)
+                tick()
+                yield delay(5)
+                d_data.append(bytes([o_data]))
+            i_mode.next = IDLE
+
+            d_data = b''.join(d_data)
+
+            self.assertEqual(b_data, d_data, "decompress after compress does NOT match")
+            print(len(d_data), len(zl_data))
+
+
+
         self.runTests(test_decompress)
 
     def runTests(self, test):

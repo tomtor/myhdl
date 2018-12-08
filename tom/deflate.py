@@ -594,7 +594,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             nextCode[bits].next = nextCode[bits] + 1
                             if bits > MaxCodeLength:
                                 raise Error("too many bits: %d" % bits)
-                            print(canonical, bits)
+                            # print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
                             print("LEAF: ", cur_i, bits, reverse)
                             if method == 4:
@@ -644,7 +644,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         leaves[spread].next = makeLeaf(
                             cur_i, codeLength[cur_i])
-                    print("SPREAD:", spread, step, instantMask, instantMaxBit)
+                    # print("SPREAD:", spread, step, instantMask, instantMaxBit)
                     aim = instantMask
                     if method == 4:
                         aim = d_instantMask
