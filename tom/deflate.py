@@ -22,7 +22,8 @@ LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT',
-               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY')
+               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY',
+               encoding='one_hot')
 
 CodeLengthOrder = (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14,
                    1, 15)
@@ -144,9 +145,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             elif delta == 3:
                 b1.next = b4
                 b2.next = iram[di+1]
+            elif delta == 4:
+                b1.next = iram[di]
             else:
-                pass
-            nb.next = nb - delta + 1
+                delta = 1  # Adjust delta for next line calculation
+            nb.next = nb - delta + 1  # + 1 because we read 1 byte
         elif not filled or nb == 0:
             b1.next = iram[di]
             nb.next = 1
@@ -263,7 +266,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             if skip <= 2:
                                 skip = 16 - dio
                             i = get4(skip, 16)
-                            print(i)
+                            print(di, dio, nb, b1, b2, b3, b4, skip, i)
                             adv(skip + 16)
                             length.next = i
                             cur_i.next = 0
@@ -661,9 +664,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             raise Error("NO EOF!")
                         elif code == EndOfBlock:
                             print("EOF:", di, do)
-                            o_done.next = True
-                            # o_data.next = do
-                            state.next = d_state.IDLE
+                            if not final:
+                                state.next = d_state.HEADER
+                            else:
+                                o_done.next = True
+                                state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
                                 print("B:", code, di)
@@ -746,8 +751,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         print("LENGTH: ", length)
                         if method == 0:
-                            o_done.next = True
-                            state.next = d_state.IDLE
+                            if not final:
+                                state.next = d_state.HEADER
+                            else:
+                                o_done.next = True
+                                state.next = d_state.IDLE
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
@@ -774,7 +782,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 for i in range(len(d_leaves)):
                     d_leaves[i].next = 0
                 di.next = 2
-                #filled.next = True
+                filled.next = True
                 wait_data.next = False
                 dio.next = 0
                 do.next = 0
