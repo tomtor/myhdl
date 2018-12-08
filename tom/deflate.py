@@ -13,11 +13,11 @@ from https://create.stephan-brumme.com/deflate-decoder
 from math import log2
 
 from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
-    enum
+    enum, always_seq, always_comb
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 2048
+BSIZE = 4096
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
@@ -42,6 +42,22 @@ ExtraDistanceBits = (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 
 
 @block
+def RAM(dout, din, addr, we, clk, depth=128):
+    mem = [Signal(intbv(0)[8:]) for i in range(depth)]
+
+    @always(clk.posedge)
+    def write():
+        if we:
+            mem[addr].next = din
+
+    @always_comb
+    def read():
+        dout.next = mem[addr]
+
+    return write, read
+
+
+@block
 def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     """ Deflate (de)compress
@@ -52,6 +68,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     iram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
     oram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
+
+    rout = Signal(intbv()[8:])
+    rin = Signal(intbv()[8:])
+    rwe = Signal(bool())
+    tram = RAM(rout, rin, i_addr, rwe, clk)
 
     isize = Signal(intbv()[LBSIZE:])
     state = Signal(d_state.IDLE)
@@ -119,10 +140,11 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     """
     wtick = Signal(bool())
-    nextb = Signal(intbv()[8:])
     """
+    nextb = Signal(intbv()[8:])
 
-    @always(clk.posedge)
+
+    @always_seq(clk.posedge, reset)
     def fill_buf():
         if not reset or wait_data:
             nb.next = 0
@@ -213,7 +235,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     def get_code(aleaf):
         return (aleaf >> BITBITS)  # & ((1 << CODEBITS) - 1)
 
-    @always(clk.posedge)
+    @always_seq(clk.posedge, reset)
     def logic():
         if not reset:
             state.next = d_state.IDLE
@@ -723,7 +745,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.COPY:
 
-                    """ PIPELINED?
                     if not filled:
                         filled.next = True
                     elif nb < 4:
@@ -754,7 +775,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
-                            """
+                    """
                     if not filled:
                         filled.next = True
                     elif nb < 4:
@@ -779,6 +800,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
+                            """
 
             elif i_mode == WRITE:
 
@@ -810,7 +832,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 wait_data.next = False
                 state.next = d_state.HEADER
 
-    return logic, fill_buf
+    return tram, logic, fill_buf
 
 
 if __name__ == "__main__":

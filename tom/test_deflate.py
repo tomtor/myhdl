@@ -5,7 +5,7 @@ import random
 
 from myhdl import delay, now, Signal, intbv, ResetSignal, Simulation, \
                   Cosimulation, block, instance, StopSimulation, modbv, \
-                  always, always_comb, enum, Error
+                  always, always_seq, always_comb, enum, Error
 
 from deflate import IDLE, WRITE, READ, STARTC, STARTD, LBSIZE
 
@@ -169,7 +169,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if state == tb_state.WRITE:
                 reset.next = 1
 
-    @always(i_clk.posedge)
+    @always_seq(i_clk.posedge, reset)
     def count():
         if not reset:
             counter.next = 0
@@ -180,6 +180,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 counter.next = counter + 1
             scounter.next = scounter + 1
 
+    # @always_seq(i_clk.posedge, reset)
     @always(i_clk.posedge)
     def logic():
 
@@ -216,6 +217,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_mode.next = IDLE
             elif o_done:
                 state.next = tb_state.VERIFY
+                if scounter == 0:
+                    led1_b.next = not led1_b
                 led0_g.next = 0
                 tbi.next = 0
                 i_addr.next = 0
@@ -269,7 +272,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
 
 if not COSIMULATION:
-    SLOWDOWN = 24
+    SLOWDOWN = 18 # 24
 
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                         Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
