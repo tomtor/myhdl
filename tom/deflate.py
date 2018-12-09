@@ -118,6 +118,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     b3 = Signal(intbv()[8:])
     b4 = Signal(intbv()[8:])
     nb = Signal(intbv()[3:])
+    newnb = Signal(intbv()[3:])
     filled = Signal(bool())
     wait_data = Signal(bool())
 
@@ -132,21 +133,40 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     """
     nextb = Signal(intbv()[8:])
     readbyte = Signal(intbv()[8:])
+    reading = Signal(intbv()[3:])
 
     @always_comb
-    def read():
+    def readram():
         readbyte.next = iram[iraddr]
 
-    @always(clk.posedge)
-    #@always_seq(clk.posedge, reset)
+    #@always(clk.posedge, reset)
+    @always_seq(clk.posedge, reset)
     def fill_buf():
         if not reset or wait_data:
-            nb.next = 0
+            # nb.next = 0
+            newnb.next = 0
             old_di.next = 0
             b1.next = 0
             b2.next = 0
             b3.next = 0
             b4.next = 0
+            reading.next = 0
+        elif reading == 1:
+            b1.next = readbyte
+            nb.next = newnb
+            reading.next = 0
+        elif reading == 2:
+            b2.next = readbyte
+            nb.next = newnb
+            reading.next = 0
+        elif reading == 3:
+            b3.next = readbyte
+            nb.next = newnb
+            reading.next = 0
+        elif reading == 4:
+            b4.next = readbyte
+            nb.next = newnb
+            reading.next = 0
         elif not filled and nb == 4:
             delta = di - old_di
             if delta == 1:
@@ -155,39 +175,47 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 b2.next = b3
                 b3.next = b4
                 iraddr.next = di+3
-                b4.next = readbyte  # iram[iraddr]
+                reading.next = 4
+                # b4.next = readbyte  # iram[iraddr]
             elif delta == 2:
                 b1.next = b3
                 b2.next = b4
                 iraddr.next = di+2
-                b3.next = readbyte
+                reading.next = 3
+                # b3.next = readbyte
             elif delta == 3:
                 b1.next = b4
                 iraddr.next = di+1
-                b2.next = readbyte
+                reading.next = 2
+                # b2.next = readbyte
             elif delta == 4:
                 iraddr.next = di
-                b1.next = readbyte
+                reading.next = 1
+                # b1.next = readbyte
             else:
                 delta = 1  # Adjust delta for next line calculation
-            nb.next = nb - delta + 1  # + 1 because we read 1 byte
+            newnb.next = nb - delta + 1  # + 1 because we read 1 byte
         elif not filled or nb == 0:
             # print("nb.next = 1")
             iraddr.next = di
-            b1.next = readbyte
-            nb.next = 1
+            reading.next = 1
+            # b1.next = readbyte
+            newnb.next = 1
         elif not filled or nb == 1:
             iraddr.next = di+1
-            b2.next = readbyte
-            nb.next = 2
+            reading.next = 2
+            # b2.next = readbyte
+            newnb.next = 2
         elif not filled or nb == 2:
             iraddr.next = di+2
-            b3.next = readbyte
-            nb.next = 3
+            reading.next = 3
+            # b3.next = readbyte
+            newnb.next = 3
         elif not filled or nb == 3:
             iraddr.next = di+3
-            b4.next = readbyte
-            nb.next = 4
+            reading.next = 4
+            # b4.next = readbyte
+            newnb.next = 4
         else:
             pass
         old_di.next = di
@@ -973,7 +1001,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 wait_data.next = False
                 state.next = d_state.HEADER
 
-    return logic, fill_buf
+    return logic, fill_buf, readram
 
 
 if __name__ == "__main__":
