@@ -482,7 +482,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 i_mode.next = IDLE
                 state.next = tb_state.CPAUSE
                 resume.next = 1
-                # raise StopSimulation()
+                if SLOWDOWN == 1:
+                    raise StopSimulation()
 
         elif state == tb_state.CPAUSE:
             if resume == 0:
@@ -502,7 +503,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-if 0: # not COSIMULATION:
+if 1: # not COSIMULATION:
     SLOWDOWN = 18 # 24
 
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
@@ -510,7 +511,7 @@ if 0: # not COSIMULATION:
 
     tb.convert(initial_values=True)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
