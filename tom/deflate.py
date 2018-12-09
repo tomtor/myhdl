@@ -1,5 +1,5 @@
 """
-MyHDL FPGA Deflate (de)compressor, see RFC1951 and https://zlib.net
+MyHDL FPGA Deflate (de)compressor, see RFC 1950/1951
 
 Copyright 2018 by Tom Vijlbrief
 
@@ -144,7 +144,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         elif not filled and nb == 4:
             delta = di - old_di
             if delta == 1:
-                print("delta == 1")
+                # print("delta == 1")
                 b1.next = b2
                 b2.next = b3
                 b3.next = b4
@@ -162,7 +162,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 delta = 1  # Adjust delta for next line calculation
             nb.next = nb - delta + 1  # + 1 because we read 1 byte
         elif not filled or nb == 0:
-            print("nb.next = 1")
+            # print("nb.next = 1")
             b1.next = iram[di]
             nb.next = 1
         elif not filled or nb == 1:
@@ -182,14 +182,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if nb != 4:
             print("----NB----")
             raise Error("NB")
-        print("get4", b1,b2,b3,b4)
+        # print("get4", b1,b2,b3,b4)
         r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
              (dio + boffset)) & ((1 << width) - 1)
         return r
 
     def adv(width):
         nshift = ((dio + width) >> 3)
-        print("nshift: ", nshift)
+        # print("nshift: ", nshift)
 
         dio.next = (dio + width) & 0x7
         di.next = di + nshift
@@ -211,27 +211,28 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if d > ((1 << width) - 1):
             raise Error("too big")
         # print("put_adv:", d, width, do, doo, ob1)
-        pshift = ((doo + width) >> 3)
+        pshift = (doo + width) > 8
         # print("pshift: ", pshift)
         if pshift:
             carry = width - (8 - doo)
             # print("carry:", carry, d >> (8 - carry))
-            ob1.next = d >> (8 - carry)
+            ob1.next = d >> (width - carry)
         else:
             ob1.next = ob1 | (d << doo)
             # print("ob1.next", ob1 | (d << doo))
         do.next = do + pshift
         o_data.next = do + pshift
         doo_next = (doo + width) & 0x7
-        if pshift != 0 and doo_next == 0:
+        if doo_next == 0:
             flush.next = True
+            # print("set flush")
         doo.next= doo_next
 
     def do_flush():
-        print("FLUSH")
+        # print("FLUSH")
         flush.next = False
         ob1.next = 0
-        o_data.next = do
+        o_data.next = do + 1
         do.next = do + 1
 
     def rev_bits(b, nb):
@@ -332,7 +333,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.CSTATIC:
 
-                    print("CSTATIC", cur_i, do, isize)
+                    # print("CSTATIC", cur_i, ob1, do, doo, isize)
 
                     did_flush = 0
                     if cur_i == 0:
@@ -348,6 +349,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         oram[do].next = put(0x3, 3)
                         put_adv(0x3, 3)
                     elif flush:
+                        # print(do, ob1)
                         did_flush = 1
                         oram[do].next = ob1
                         do_flush()
@@ -390,7 +392,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         adler1_next = (adler1 + bdata) % 65521
                         adler1.next = adler1_next
                         adler2.next = (adler2 + adler1_next) % 65521
-                        print("in: ", bdata)
+                        # print("in: ", bdata)
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]
                         print("BITS:", bdata, outlen, outbits)
@@ -553,7 +555,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.HF1INIT:
                     # get frequencies of each bit length and ignore 0's
 
-                    print("HF1")
+                    # print("HF1")
                     if cur_i < numCodeLength:
                         j = codeLength[cur_i]
                         bitLengthCount[j].next = bitLengthCount[j] + 1
@@ -616,7 +618,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         ncode = ((code + bitLengthCount[cur_i - 1]) << 1)
                         code.next = ncode
                         nextCode[cur_i].next = ncode
-                        print(cur_i, ncode)
+                        # print(cur_i, ncode)
                         cur_i.next = cur_i + 1
                     else:
                         state.next = d_state.HF4
@@ -635,7 +637,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 raise Error("too many bits: %d" % bits)
                             # print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
-                            print("LEAF: ", cur_i, bits, reverse, canonical)
+                            # print("LEAF: ", cur_i, bits, reverse, canonical)
                             if method == 4:
                                 d_leaves[reverse].next = makeLeaf(cur_i, bits)
                                 if bits <= d_instantMaxBit:
@@ -701,19 +703,19 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif nb < 4:
                         pass
                     elif cur_i == 0:
-                        print("INIT:", di, dio, instantMaxBit, maxBits)
+                        # print("INIT:", di, dio, instantMaxBit, maxBits)
                         if instantMaxBit <= maxBits:
                             cto = get4(0, maxBits)
                             compareTo.next = cto
                             cur_i.next = instantMaxBit
                             mask = (1 << instantMaxBit) - 1
                             leaf.next = leaves[cto & mask]
-                            print(cur_i, compareTo, mask, leaf, maxBits)
+                            # print(cur_i, compareTo, mask, leaf, maxBits)
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")
                     elif cur_i <= maxBits:
-                        print("NEXT:", cur_i)
+                        # print("NEXT:", cur_i)
                         if get_bits(leaf) <= cur_i:
                             if get_bits(leaf) < 1:
                                 print("< 1 bits: ")
@@ -722,8 +724,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             if get_code(leaf) == 0:
                                 print("leaf 0")
                             code.next = get_code(leaf)
-                            print("ADV:", di, dio, compareTo, get_bits(leaf),
-                                  get_code(leaf))
+                            # print("ADV:", di, dio, compareTo, get_bits(leaf), get_code(leaf))
                             if method == 2:
                                 state.next = d_state.READBL
                             else:
@@ -742,18 +743,18 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif nb < 4:
                         pass
                     elif cur_i == 0:
-                        print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
+                        # print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
                         if d_instantMaxBit <= d_maxBits:
                             token = code - 257
-                            print("token: ", token)
+                            # print("token: ", token)
                             extraLength = ExtraLengthBits[token]
-                            print("extra length bits:", extraLength)
+                            # print("extra length bits:", extraLength)
                             cto = get4(extraLength, d_maxBits)
                             compareTo.next = cto
                             cur_i.next = d_instantMaxBit
                             mask = (1 << d_instantMaxBit) - 1
                             leaf.next = d_leaves[cto & mask]
-                            print(cur_i, compareTo, mask, leaf, d_maxBits)
+                            # print(cur_i, compareTo, mask, leaf, d_maxBits)
                         else:
                             raise Error("???")
 
@@ -762,7 +763,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
                             token = code - 257
-                            print("E2:", token, leaf)
+                            # print("E2:", token, leaf)
                             tlength = CopyLength[token]
                             # print("tlength:", tlength)
                             extraLength = ExtraLengthBits[token]
@@ -817,7 +818,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 state.next = d_state.IDLE
                         else:
                             if code < EndOfBlock:
-                                print("B:", code, di, do)
+                                # print("B:", code, di, do)
                                 oram[do].next = code
                                 o_data.next = do + 1
                                 do.next = do + 1
@@ -828,7 +829,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             else:
                                 if static:
                                     token = code - 257
-                                    print("E:", token)
+                                    # print("E:", token)
                                     tlength = CopyLength[token]
                                     extraLength = ExtraLengthBits[token]
                                     tlength += get4(0, extraLength)
@@ -913,7 +914,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif i_mode == WRITE:
 
-                print("WRITE:", i_addr, i_data)
+                # print("WRITE:", i_addr, i_data)
                 iram[i_addr].next = i_data
                 isize.next = i_addr
 

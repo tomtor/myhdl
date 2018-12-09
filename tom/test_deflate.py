@@ -29,10 +29,10 @@ else:
 
 
 def test_data():
-    if 1:
-        str_data = " ".join(["Hello World! " + str(i) + " "
-        #str_data = " ".join([str(random.randrange(0,0x1000)) + " "
-                             for i in range(1)])
+    if 0:
+        #str_data = " ".join(["Hello World! " + str(i) + " "
+        str_data = " ".join(["Hi: " + str(random.randrange(0,0x1000)) + " "
+                             for i in range(100)])
         b_data = str_data.encode('utf-8')
     else:
         b_data = bytes([random.randrange(0,0x100) for i in range(100)])
@@ -106,6 +106,7 @@ class TestDeflate(unittest.TestCase):
             print(len(d_data), len(zl_data))
 
             print("==========COMPRESS TEST=========")
+
             i_mode.next = WRITE
             for i in range(len(b_data)):
                 i_data.next = b_data[i]
@@ -131,6 +132,8 @@ class TestDeflate(unittest.TestCase):
                 yield delay(5)
             print(now())
 
+            # raise Error("STOP")
+
             last = o_data
             i_mode.next = READ
             c_data = []
@@ -147,8 +150,6 @@ class TestDeflate(unittest.TestCase):
             c_data = b''.join(c_data)
             print("c_data:", len(c_data), c_data)
             print("zl_data:", len(zl_data), zl_data)
-
-            # raise Error("STOP")
 
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE
@@ -192,8 +193,7 @@ class TestDeflate(unittest.TestCase):
             d_data = b''.join(d_data)
 
             self.assertEqual(b_data, d_data, "decompress after compress does NOT match")
-            print(len(d_data), len(zl_data))
-
+            print(len(b_data), len(zl_data), len(c_data))
 
 
         self.runTests(test_decompress)
