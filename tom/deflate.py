@@ -17,13 +17,13 @@ from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 1024
+BSIZE = 2048
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT',
-               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC',
-               encoding='one_hot')
+               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC')
+               # encoding='one_hot')
 
 CodeLengthOrder = (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14,
                    1, 15)
@@ -53,6 +53,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     iram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
     oram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
 
+    iraddr = Signal(intbv()[LBSIZE:])
+
     isize = Signal(intbv()[LBSIZE:])
     state = Signal(d_state.IDLE)
     method = Signal(intbv()[3:])
@@ -75,14 +77,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     CODEBITS = MaxCodeLength
     BITBITS = 9
 
-    codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+32)]
+    codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+1)]
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
     code_bits = [Signal(intbv()[9:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(512)]
-    d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(64)]
+    d_leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(128)]
     leaf = Signal(intbv()[CODEBITS + BITBITS:])
 
     minBits = Signal(intbv()[5:])
@@ -129,8 +131,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     wtick = Signal(bool())
     """
     nextb = Signal(intbv()[8:])
+    readbyte = Signal(intbv()[8:])
 
-    @always_seq(clk.posedge, reset)
+    @always_comb
+    def read():
+        readbyte.next = iram[iraddr]
+
+    @always(clk.posedge)
+    #@always_seq(clk.posedge, reset)
     def fill_buf():
         if not reset or wait_data:
             nb.next = 0
@@ -146,31 +154,39 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 b1.next = b2
                 b2.next = b3
                 b3.next = b4
-                b4.next = iram[di+3]
+                iraddr.next = di+3
+                b4.next = readbyte  # iram[iraddr]
             elif delta == 2:
                 b1.next = b3
                 b2.next = b4
-                b3.next = iram[di+2]
+                iraddr.next = di+2
+                b3.next = readbyte
             elif delta == 3:
                 b1.next = b4
-                b2.next = iram[di+1]
+                iraddr.next = di+1
+                b2.next = readbyte
             elif delta == 4:
-                b1.next = iram[di]
+                iraddr.next = di
+                b1.next = readbyte
             else:
                 delta = 1  # Adjust delta for next line calculation
             nb.next = nb - delta + 1  # + 1 because we read 1 byte
         elif not filled or nb == 0:
             # print("nb.next = 1")
-            b1.next = iram[di]
+            iraddr.next = di
+            b1.next = readbyte
             nb.next = 1
         elif not filled or nb == 1:
-            b2.next = iram[di+1]
+            iraddr.next = di+1
+            b2.next = readbyte
             nb.next = 2
         elif not filled or nb == 2:
-            b3.next = iram[di+2]
+            iraddr.next = di+2
+            b3.next = readbyte
             nb.next = 3
         elif not filled or nb == 3:
-            b4.next = iram[di+3]
+            iraddr.next = di+3
+            b4.next = readbyte
             nb.next = 4
         else:
             pass
@@ -331,8 +347,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                     # print("CSTATIC", cur_i, ob1, do, doo, isize)
 
-                    did_flush = 0
-                    if cur_i == 0:
+                    no_adv = 0
+                    if not filled:
+                        no_adv = 1
+                        filled.next = True
+                    elif nb < 4:
+                        no_adv = 1
+                        pass
+                    elif cur_i == 0:
                         flush.next = False
                         ob1.next = 0
                         adler1.next = 1
@@ -346,7 +368,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         put_adv(0x3, 3)
                     elif flush:
                         # print(do, ob1)
-                        did_flush = 1
+                        no_adv = 1
                         oram[do].next = ob1
                         do_flush()
                     elif cur_i - 3 > isize:
@@ -363,28 +385,31 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 oram[do].next = ob1
                                 do.next = do + 1
                         elif cur_i - 3 == isize + 3:
-                            # print("c1")
+                            print("c1")
                             oram[do].next = adler2 >> 8
                             do.next = do + 1
                         elif cur_i - 3 == isize + 4:
-                            # print("c2")
+                            print("c2")
                             oram[do].next = (adler2 & 0xFF)
                             do.next = do + 1
                         elif cur_i - 3 == isize + 5:
-                            # print("c3")
+                            print("c3")
                             oram[do].next = adler1 >> 8
                             do.next = do + 1
                         elif cur_i - 3 == isize + 6:
-                            # print("c4")
+                            print("c4")
                             oram[do].next = (adler1 & 0xFF)
-                        else:
+                        elif cur_i - 3 == isize + 7:
                             print("EOF finish")
                             o_done.next = True
                             o_data.next = do + 1
                             wait_data.next = True
+                            # filled.next = False
                             state.next = d_state.IDLE
                     else:
-                        bdata = iram[cur_i - 3]
+                        bdata = get4(0, 8)  # iram[cur_i - 3]
+                        adv(8)
+                        # bdata = iram[cur_i - 3]
                         adler1_next = (adler1 + bdata) % 65521
                         adler1.next = adler1_next
                         adler2.next = (adler2 + adler1_next) % 65521
@@ -395,7 +420,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         oram[do].next = put(outbits, outlen)
                         put_adv(outbits, outlen)
 
-                    if not did_flush:
+                    if not no_adv:
                         cur_i.next = cur_i + 1
 
                 elif state == d_state.STATIC:
@@ -676,6 +701,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.SPREAD:
 
                     if method == 4:
+                        # print(spread, cur_i)
                         d_leaves[spread].next = makeLeaf(
                             cur_i, codeLength[cur_i])
                     else:
@@ -795,7 +821,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
                             # print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
-                        elif di > isize - 3:  # checksum is 4 bytes
+                        elif di > isize - 4:  # checksum is 4 bytes
                             state.next = d_state.IDLE
                             o_done.next = True
                             wait_data.next = True
@@ -924,9 +950,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 di.next = 0
                 dio.next = 0
                 do.next = 0
+                doo.next = 0
                 filled.next = True
                 wait_data.next = False
-
                 state.next = d_state.STATIC
 
             elif i_mode == STARTD:
