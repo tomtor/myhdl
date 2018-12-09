@@ -143,11 +143,12 @@ class TestDeflate(unittest.TestCase):
                 c_data.append(bytes([o_data]))
             i_mode.next = IDLE
 
-            raise Error("STOP")
-
             print("b_data:", len(b_data), b_data)
             c_data = b''.join(c_data)
             print("c_data:", len(c_data), c_data)
+            print("zl_data:", len(zl_data), zl_data)
+
+            raise Error("STOP")
 
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE

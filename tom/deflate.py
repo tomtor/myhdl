@@ -78,6 +78,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     codeLength = [Signal(intbv()[4:]) for _ in range(MaxBitLength+32)]
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
+    code_bits = [Signal(intbv()[9:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
     leaves = [Signal(intbv()[CODEBITS + BITBITS:]) for _ in range(512)]
@@ -197,20 +198,28 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     def put(d, width):
         if width > 9:
             raise Error("width > 9")
-        print("put:", d, width, do, doo)
+        if d > ((1 << width) - 1):
+            raise Error("too big")
+        print("put:", d, width, do, doo, ob1, (ob1 | (d << doo)))
+        return (ob1 | (d << doo)) & 0xFF
+
+    def put_adv(d, width):
+        if width > 9:
+            raise Error("width > 9")
+        if d > ((1 << width) - 1):
+            raise Error("too big")
+        print("put_adv:", d, width, do, doo, ob1)
         pshift = ((doo + width) >> 3)
         print("pshift: ", pshift)
         if pshift:
-            putbyte.next = ((ob1 << width) | d) & 0xFF
-            o_data.next = do
-            do.next = do + 1
             carry = width - (8 - doo)
-            ob1.next = d >> carry
+            print("carry:", carry, d >> (8 - carry))
+            ob1.next = d >> (8 - carry)
         else:
-            if d >= (1 << width):
-                raise Error("put too wide")
-            ob1.next = (ob1 << width) | d
+            ob1.next = ob1 | (d << doo)
+            print("ob1.next", ob1 | (d << doo))
         do.next = do + pshift
+        o_data.next = do + pshift
         doo_next = (doo + width) & 0x7
         flush.next = (doo_next == 0) 
         doo.next= doo_next
@@ -329,7 +338,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         oram[1].next = 0x9c
                         do.next = 2
                     elif cur_i == 2:
-                        put(0x3, 3)
+                        oram[do].next = put(0x3, 3)
+                        put_adv(0x3, 3)
                     elif flush:
                         oram[do].next = ob1
                         do_flush()
@@ -338,12 +348,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("Put EOF")
                             i = EndOfBlock
                             outlen = codeLength[i]
-                            codeoffset = i - nextCode[outlen]
-                            theleaf = leaves[nextCode[outlen] + codeoffset]
-                            outbits = get_code(theleaf)
+                            outbits = code_bits[i]
                             print("EOF BITS:", i, outlen, outbits)
-                            put(outbits, outlen)
-                        oram[do].next = ob1
+                            oram[do].next = put(outbits, outlen)
+                            put_adv(outbits, outlen)
                         o_done.next = True
                         o_data.next = do + 1
                         wait_data.next = True
@@ -355,12 +363,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         bdata = iram[cur_i - 3]
                         print("in: ", bdata)
                         outlen = codeLength[bdata]
-                        codeoffset = bdata - nextCode[outlen]
-                        theleaf = leaves[nextCode[outlen] + codeoffset]
-                        outbits = get_code(theleaf)
+                        outbits = code_bits[bdata]
                         print("BITS:", bdata, outlen, outbits)
-                        put(outbits, outlen)
-                        oram[do].next = ob1
+                        oram[do].next = put(outbits, outlen)
+                        put_adv(outbits, outlen)
                     cur_i.next = cur_i + 1
 
                 elif state == d_state.STATIC:
@@ -598,7 +604,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 raise Error("too many bits: %d" % bits)
                             # print(canonical, bits)
                             reverse = rev_bits(canonical, bits)
-                            print("LEAF: ", cur_i, bits, reverse)
+                            print("LEAF: ", cur_i, bits, reverse, canonical)
                             if method == 4:
                                 d_leaves[reverse].next = makeLeaf(cur_i, bits)
                                 if bits <= d_instantMaxBit:
@@ -612,6 +618,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                     cur_i.next = cur_i + 1
                             else:
                                 leaves[reverse].next = makeLeaf(cur_i, bits)
+                                code_bits[cur_i].next = reverse
                                 if bits <= instantMaxBit:
                                     if reverse + (1 << bits) <= instantMask:
                                         step.next = 1 << bits
@@ -763,7 +770,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
                             # print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
-                        elif di > isize:
+                        elif di > isize - 4:  # checksum is 4 bytes
                             state.next = d_state.IDLE
                             o_done.next = True
                             wait_data.next = True
@@ -811,6 +818,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.COPY:
 
+                    """
                     if not filled:
                         filled.next = True
                     elif nb < 4:
@@ -871,7 +879,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             cur_i.next = 0
                             state.next = d_state.NEXT
-                            """
 
             elif i_mode == WRITE:
 
