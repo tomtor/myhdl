@@ -799,7 +799,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
                             # print("EXTRA FETCH", nb, dio)
                             pass  # fetch more bytes
-                        elif di > isize - 4:  # checksum is 4 bytes
+                        elif di > isize - 3:  # checksum is 4 bytes
                             state.next = d_state.IDLE
                             o_done.next = True
                             wait_data.next = True

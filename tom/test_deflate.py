@@ -28,9 +28,16 @@ else:
                             clk=clk, reset=reset)
 
 
-def test_data():
-    if 0:
-        #str_data = " ".join(["Hello World! " + str(i) + " "
+def test_data(m):
+    if m == 0:
+        str_data = " ".join(["Hello World! " + str(1) + " "
+                             for i in range(100)])
+        b_data = str_data.encode('utf-8')
+    elif m == 1:
+        str_data = " ".join(["Hello World! " + str(i) + " "
+                             for i in range(100)])
+        b_data = str_data.encode('utf-8')
+    elif m == 2:
         str_data = " ".join(["Hi: " + str(random.randrange(0,0x1000)) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
@@ -52,7 +59,7 @@ class TestDeflate(unittest.TestCase):
             def tick():
                 clk.next = not clk
 
-            b_data, zl_data = test_data()
+            b_data, zl_data = test_data(mode)
 
             reset.next = 0
             tick()
@@ -196,7 +203,8 @@ class TestDeflate(unittest.TestCase):
             print(len(b_data), len(zl_data), len(c_data))
 
 
-        self.runTests(test_decompress)
+        for mode in range(0, 4):
+            self.runTests(test_decompress)
 
     def runTests(self, test):
         """Helper method to run the actual tests."""
@@ -501,7 +509,7 @@ if 0: # not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 1:
+if 0:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
