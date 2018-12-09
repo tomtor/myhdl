@@ -17,7 +17,7 @@ from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
-BSIZE = 2048
+BSIZE = 1024
 LBSIZE = log2(BSIZE)
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
@@ -130,7 +130,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     """
     nextb = Signal(intbv()[8:])
 
-
     @always_seq(clk.posedge, reset)
     def fill_buf():
         if not reset or wait_data:
@@ -224,8 +223,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         doo_next = (doo + width) & 0x7
         if doo_next == 0:
             flush.next = True
-            # print("set flush")
-        doo.next= doo_next
+        doo.next = doo_next
 
     def do_flush():
         # print("FLUSH")
@@ -269,7 +267,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             print("DEFLATE RESET")
             state.next = d_state.IDLE
             o_done.next = False
-            #filled.next = False
             wait_data.next = True
         else:
             if i_mode == IDLE:
@@ -453,8 +450,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif nb < 4:
                         pass
                     elif numCodeLength < numLiterals + numDistance:
-                        # print(numLiterals + numDistance, numCodeLength,
-                              # howOften, code, di)
+                        # print(numLiterals + numDistance, numCodeLength)
                         i = 0
                         if code < 16:
                             howOften.next = 1
@@ -685,7 +681,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         leaves[spread].next = makeLeaf(
                             cur_i, codeLength[cur_i])
-                    # print("SPREAD:", spread, step, instantMask, instantMaxBit)
+                    # print("SPREAD:", spread, step, instantMask)
                     aim = instantMask
                     if method == 4:
                         aim = d_instantMask
@@ -722,7 +718,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             if get_code(leaf) == 0:
                                 print("leaf 0")
                             code.next = get_code(leaf)
-                            # print("ADV:", di, dio, get_bits(leaf), get_code(leaf))
+                            # print("ADV:", di, get_bits(leaf), get_code(leaf))
                             if method == 2:
                                 state.next = d_state.READBL
                             else:

@@ -19,8 +19,7 @@ else:
         print("Cosimulation")
         cmd = "iverilog -o deflate " + \
               "deflate.v " + \
-              "tb_deflate.v "
-              # "dump.v "
+              "tb_deflate.v "  # "dump.v "
         os.system(cmd)
         return Cosimulation("vvp -m ./myhdl deflate",
                             i_mode=i_mode, o_done=o_done,
@@ -35,14 +34,16 @@ def test_data(m):
         b_data = str_data.encode('utf-8')
     elif m == 1:
         str_data = " ".join(["Hello World! " + str(i) + " "
-                             for i in range(100)])
+                             for i in range(50)])
         b_data = str_data.encode('utf-8')
     elif m == 2:
         str_data = " ".join(["Hi: " + str(random.randrange(0,0x1000)) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
-    else:
+    elif m == 3:
         b_data = bytes([random.randrange(0,0x100) for i in range(100)])
+    else:
+        raise Error("unknown test mode")
     zl_data = zlib.compress(b_data)
     print("From %d to %d bytes" % (len(b_data), len(zl_data)))
     print(zl_data)
@@ -202,9 +203,9 @@ class TestDeflate(unittest.TestCase):
             self.assertEqual(b_data, d_data, "decompress after compress does NOT match")
             print(len(b_data), len(zl_data), len(c_data))
 
-
-        for mode in range(0, 4):
-            self.runTests(test_decompress)
+        for loop in range(3):
+            for mode in range(4):
+                self.runTests(test_decompress)
 
     def runTests(self, test):
         """Helper method to run the actual tests."""
@@ -233,7 +234,7 @@ SLOWDOWN = 1
 def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     d_data = [Signal(intbv()[8:]) for _ in range(2048)]
-    u_data, c_data = test_data()
+    u_data, c_data = test_data(1)
 
     CDATA = tuple(c_data)
     UDATA = tuple(u_data)
@@ -501,7 +502,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-if 0: # not COSIMULATION:
+if 1: # not COSIMULATION:
     SLOWDOWN = 18 # 24
 
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
@@ -509,7 +510,7 @@ if 0: # not COSIMULATION:
 
     tb.convert(initial_values=False)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
