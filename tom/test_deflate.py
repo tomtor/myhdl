@@ -148,7 +148,7 @@ class TestDeflate(unittest.TestCase):
             print("c_data:", len(c_data), c_data)
             print("zl_data:", len(zl_data), zl_data)
 
-            raise Error("STOP")
+            # raise Error("STOP")
 
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE

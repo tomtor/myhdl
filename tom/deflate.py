@@ -121,8 +121,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     wait_data = Signal(bool())
 
     ob1 = Signal(intbv()[8:])
-    putbyte = Signal(intbv()[8:])
     flush = Signal(bool(0))
+
+    adler1 = Signal(intbv()[16:])
+    adler2 = Signal(intbv()[16:])
 
     """
     wtick = Signal(bool())
@@ -200,7 +202,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             raise Error("width > 9")
         if d > ((1 << width) - 1):
             raise Error("too big")
-        print("put:", d, width, do, doo, ob1, (ob1 | (d << doo)))
+        # print("put:", d, width, do, doo, ob1, (ob1 | (d << doo)))
         return (ob1 | (d << doo)) & 0xFF
 
     def put_adv(d, width):
@@ -208,20 +210,21 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             raise Error("width > 9")
         if d > ((1 << width) - 1):
             raise Error("too big")
-        print("put_adv:", d, width, do, doo, ob1)
+        # print("put_adv:", d, width, do, doo, ob1)
         pshift = ((doo + width) >> 3)
-        print("pshift: ", pshift)
+        # print("pshift: ", pshift)
         if pshift:
             carry = width - (8 - doo)
-            print("carry:", carry, d >> (8 - carry))
+            # print("carry:", carry, d >> (8 - carry))
             ob1.next = d >> (8 - carry)
         else:
             ob1.next = ob1 | (d << doo)
-            print("ob1.next", ob1 | (d << doo))
+            # print("ob1.next", ob1 | (d << doo))
         do.next = do + pshift
         o_data.next = do + pshift
         doo_next = (doo + width) & 0x7
-        flush.next = (doo_next == 0) 
+        if pshift != 0 and doo_next == 0:
+            flush.next = True
         doo.next= doo_next
 
     def do_flush():
@@ -330,9 +333,13 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 elif state == d_state.CSTATIC:
 
                     print("CSTATIC", cur_i, do, isize)
+
+                    did_flush = 0
                     if cur_i == 0:
                         flush.next = False
                         ob1.next = 0
+                        adler1.next = 1
+                        adler2.next = 0
                         oram[0].next = 0x78
                     elif cur_i == 1:
                         oram[1].next = 0x9c
@@ -341,6 +348,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         oram[do].next = put(0x3, 3)
                         put_adv(0x3, 3)
                     elif flush:
+                        did_flush = 1
                         oram[do].next = ob1
                         do_flush()
                     elif cur_i - 3 > isize:
@@ -352,22 +360,45 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("EOF BITS:", i, outlen, outbits)
                             oram[do].next = put(outbits, outlen)
                             put_adv(outbits, outlen)
-                        o_done.next = True
-                        o_data.next = do + 1
-                        wait_data.next = True
-                        if not flush:
-                            state.next = d_state.IDLE
+                        elif cur_i - 3 == isize + 2:
+                            if doo:
+                                oram[do].next = ob1
+                                do.next = do + 1
+                        elif cur_i - 3 == isize + 3:
+                            print("c1")
+                            oram[do].next = adler2 >> 8
+                            do.next = do + 1
+                        elif cur_i - 3 == isize + 4:
+                            print("c2")
+                            oram[do].next = (adler2 & 0xFF)
+                            do.next = do + 1
+                        elif cur_i - 3 == isize + 5:
+                            print("c3")
+                            oram[do].next = adler1 >> 8
+                            do.next = do + 1
+                        elif cur_i - 3 == isize + 6:
+                            print("c4")
+                            oram[do].next = (adler1 & 0xFF)
                         else:
-                            print("FLUSH EOF")
+                            print("EOF finish")
+                            o_done.next = True
+                            o_data.next = do + 1
+                            wait_data.next = True
+                            state.next = d_state.IDLE
                     else:
                         bdata = iram[cur_i - 3]
+                        adler1_next = (adler1 + bdata) % 65521
+                        adler1.next = adler1_next
+                        adler2.next = (adler2 + adler1_next) % 65521
                         print("in: ", bdata)
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]
                         print("BITS:", bdata, outlen, outbits)
                         oram[do].next = put(outbits, outlen)
                         put_adv(outbits, outlen)
-                    cur_i.next = cur_i + 1
+
+                    if not did_flush:
+                        cur_i.next = cur_i + 1
 
                 elif state == d_state.STATIC:
 
