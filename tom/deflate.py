@@ -42,17 +42,18 @@ ExtraDistanceBits = (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 
 
 @block
-def RAM(dout, din, addr, we, clk, depth=128):
-    mem = [Signal(intbv(0)[8:]) for i in range(depth)]
+def RAM(dout, din, raddr, waddr, we, clk, depth):
+    mem = [Signal(intbv(0)[8:]) for _ in range(depth)]
 
     @always(clk.posedge)
     def write():
         if we:
-            mem[addr].next = din
+            print("WRAM", waddr, din)
+            mem[waddr].next = din
 
     @always_comb
     def read():
-        dout.next = mem[addr]
+        dout.next = mem[raddr]
 
     return write, read
 
@@ -66,13 +67,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     """
 
-    iram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
+    # iram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
     oram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
 
     rout = Signal(intbv()[8:])
-    rin = Signal(intbv()[8:])
-    rwe = Signal(bool())
-    tram = RAM(rout, rin, i_addr, rwe, clk)
+    # rin = Signal(intbv()[8:])
+    irdi = Signal(intbv()[LBSIZE:])
+    iwdi = Signal(intbv()[LBSIZE:])
+    iwe = Signal(bool())
+    iram = RAM(rout, i_data, irdi, iwdi, iwe, clk, BSIZE)
 
     isize = Signal(intbv()[LBSIZE:])
     state = Signal(d_state.IDLE)
@@ -159,30 +162,38 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 b1.next = b2
                 b2.next = b3
                 b3.next = b4
-                b4.next = iram[di+3]
+                irdi.next = di+3
+                b4.next = rout  # iram[di+3]
             elif delta == 2:
                 b1.next = b3
                 b2.next = b4
-                b3.next = iram[di+2]
+                irdi.next = di+2
+                b3.next = rout  # iram[di+2]
             elif delta == 3:
                 b1.next = b4
-                b2.next = iram[di+1]
+                irdi.next = di+1
+                b2.next = rout  # iram[di+1]
             elif delta == 4:
-                b1.next = iram[di]
+                irdi.next = di
+                b1.next = rout  # iram[di]
             else:
                 delta = 1  # Adjust delta for next line calculation
             nb.next = nb - delta + 1  # + 1 because we read 1 byte
         elif not filled or nb == 0:
-            b1.next = iram[di]
+            irdi.next = di
+            b1.next = rout  # iram[di]
             nb.next = 1
         elif not filled or nb == 1:
-            b2.next = iram[di+1]
+            irdi.next = di+1
+            b2.next = rout  # iram[di+1]
             nb.next = 2
         elif not filled or nb == 2:
-            b3.next = iram[di+2]
+            irdi.next = di+2
+            b3.next = rout  # iram[di+2]
             nb.next = 3
         elif not filled or nb == 3:
-            b4.next = iram[di+3]
+            irdi.next = di+3
+            b4.next = rout  # iram[di+3]
             nb.next = 4
         else:
             pass
@@ -434,7 +445,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         bitLengthCount[cur_i].next = 0
                     if cur_i < len(d_leaves):
                         d_leaves[cur_i].next = 0
-                    if method != 4:
+                    if method != 4 and cur_i < len(leaves):
                         leaves[cur_i].next = 0
                     limit = len(leaves)
                     if method == 4:
@@ -802,10 +813,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             state.next = d_state.NEXT
                             """
 
-            elif i_mode == WRITE:
+            #elif i_mode == WRITE:
 
-                iram[i_addr].next = i_data
-                isize.next = i_addr
+                #iram[i_addr].next = i_data
+                #isize.next = i_addr
 
             elif i_mode == READ:
 
@@ -832,7 +843,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 wait_data.next = False
                 state.next = d_state.HEADER
 
-    return tram, logic, fill_buf
+
+            if i_mode == WRITE:
+                iwdi.next = i_addr
+                iwe.next = True
+            else:
+                iwe.next = False
+
+    return iram, logic, fill_buf
 
 
 if __name__ == "__main__":
