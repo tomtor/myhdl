@@ -53,6 +53,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     iram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
     oram = [Signal(intbv()[8:]) for _ in range(BSIZE)]
 
+    oaddr = Signal(intbv()[LBSIZE:])
     iraddr = Signal(intbv()[LBSIZE:])
 
     isize = Signal(intbv()[LBSIZE:])
@@ -130,6 +131,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     adler1 = Signal(intbv()[16:])
     adler2 = Signal(intbv()[16:])
+    ladler1 = Signal(intbv()[16:])
 
     """
     wtick = Signal(bool())
@@ -349,6 +351,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         ob1.next = 0
                         adler1.next = 1
                         adler2.next = 0
+                        ladler1.next = 0
                         oram[0].next = 0x78
                     elif cur_cstatic == 1:
                         oram[1].next = 0x9c
@@ -371,6 +374,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             oram[do].next = put(outbits, outlen)
                             put_adv(outbits, outlen)
                         elif cur_cstatic - 3 == isize + 2:
+                            adler2.next = (adler2 + ladler1) % 65521
                             if doo != 0:
                                 oram[do].next = ob1
                                 do.next = do + 1
@@ -402,7 +406,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         # bdata = iram[cur_i - 3]
                         adler1_next = (adler1 + bdata) % 65521
                         adler1.next = adler1_next
-                        adler2.next = (adler2 + adler1_next) % 65521
+                        adler2.next = (adler2 + ladler1) % 65521
+                        ladler1.next = adler1_next
                         # print("in: ", bdata)
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]

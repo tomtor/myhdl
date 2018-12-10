@@ -304,7 +304,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         elif state == tb_state.WRITE:
             if tbi < len(CDATA):
                 # print(tbi)
-                led2_r.next = not led2_r
+                led1_b.next = 0
+                if scounter == 0:
+                    led2_r.next = not led2_r
                 i_mode.next = WRITE
                 i_data.next = CDATA[tbi]
                 i_addr.next = tbi
@@ -314,7 +316,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.DECOMPRESS
 
         elif state == tb_state.DECOMPRESS:
-            led0_g.next = 1
             i_mode.next = STARTD
             state.next = tb_state.WAIT
 
@@ -322,13 +323,12 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if i_mode == STARTD:
                 print("WAIT")
                 i_mode.next = IDLE
+                if scounter == 0:
+                    led1_b.next = not led1_b
             elif o_done:
                 print("result len", o_data)
                 resultlen.next = o_data
                 state.next = tb_state.VERIFY
-                if scounter == 0:
-                    led1_b.next = not led1_b
-                led0_g.next = 0
                 tbi.next = 0
                 i_addr.next = 0
                 i_mode.next = READ
@@ -341,6 +341,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if wtick:
                 wtick.next = False
             elif tbi < len(UDATA):
+                led1_b.next = 0
+                if scounter == 0:
+                    led2_r.next = not led2_r
                 d_data[tbi].next = o_data
                 ud = u_data
                 if o_data != ud:
@@ -356,7 +359,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             else:
                 print(len(UDATA))
                 print("DECOMPRESS test OK!, pausing", tbi)
-                led0_g.next = 1
                 i_mode.next = IDLE
                 state.next = tb_state.PAUSE
                 resume.next = 1
@@ -374,7 +376,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         elif state == tb_state.CWRITE:
             if tbi < len(UDATA):
                 # print(tbi)
-                led2_r.next = not led2_r
+                led2_r.next = 0
+                if scounter == 0:
+                    led1_b.next = not led1_b
                 i_mode.next = WRITE
                 i_data.next = UDATA[tbi]
                 i_addr.next = tbi
@@ -385,7 +389,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.COMPRESS
 
         elif state == tb_state.COMPRESS:
-            led0_g.next = 1
             i_mode.next = STARTC
             state.next = tb_state.CWAIT
 
@@ -393,13 +396,13 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if i_mode == STARTC:
                 print("WAIT COMPRESS")
                 i_mode.next = IDLE
+                led1_b.next = 0
+                if scounter == 0:
+                    led2_r.next = not led2_r
             elif o_done:
                 print("result len", o_data)
                 resultlen.next = o_data
                 state.next = tb_state.CRESULT
-                if scounter == 0:
-                    led1_b.next = not led1_b
-                led0_g.next = 0
                 tbi.next = 0
                 i_addr.next = 0
                 i_mode.next = READ
@@ -413,13 +416,15 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if wtick:
                 wtick.next = False
             elif tbi < resultlen:
+                led2_r.next = 0
+                if scounter == 0:
+                    led1_b.next = not led1_b
                 d_data[tbi].next = o_data
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
                 wtick.next = True
             else:
                 print("Compress bytes read", tbi)
-                led0_g.next = 1
                 i_mode.next = IDLE
                 state.next = tb_state.VWRITE
                 tbi.next = 0
@@ -427,7 +432,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         elif state == tb_state.VWRITE:
             if tbi < resultlen:
                 # print(tbi)
-                led2_r.next = not led2_r
+                led1_b.next = 0
+                if scounter == 0:
+                    led2_r.next = not led2_r
                 i_mode.next = WRITE
                 i_data.next = d_data[tbi]
                 i_addr.next = tbi
@@ -438,19 +445,21 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.VDECOMPRESS
 
         elif state == tb_state.VDECOMPRESS:
-            led0_g.next = 1
+            led0_g.next = 0
             i_mode.next = STARTD
             state.next = tb_state.VWAIT
 
         elif state == tb_state.VWAIT:
             if i_mode == STARTD:
+                led2_r.next = 0
+                if scounter == 0:
+                    led1_b.next = not led1_b
                 print("WAIT DECOMPRESS VERIFY")
                 i_mode.next = IDLE
             elif o_done:
                 state.next = tb_state.CVERIFY
                 if scounter == 0:
                     led1_b.next = not led1_b
-                led0_g.next = 0
                 tbi.next = 0
                 i_addr.next = 0
                 i_mode.next = READ
@@ -463,6 +472,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
             if wtick:
                 wtick.next = False
             elif tbi < len(UDATA):
+                led1_b.next = 0
+                if scounter == 0:
+                    led2_r.next = not led2_r
                 d_data[tbi].next = o_data
                 ud = u_data
                 if o_data != ud:
@@ -511,7 +523,7 @@ if 1: # not COSIMULATION:
 
     tb.convert(initial_values=True)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
