@@ -104,6 +104,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     howOften = Signal(intbv()[9:])
 
     cur_i = Signal(intbv()[LBSIZE:])
+    cur_cstatic = Signal(intbv()[LBSIZE:])
+    cur_next = Signal(intbv()[5:])
+
     length = Signal(intbv()[LBSIZE:])
     offset = Signal(intbv()[LBSIZE:])
 
@@ -341,16 +344,16 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif nb < 4:
                         no_adv = 1
                         pass
-                    elif cur_i == 0:
+                    elif cur_cstatic == 0:
                         flush.next = False
                         ob1.next = 0
                         adler1.next = 1
                         adler2.next = 0
                         oram[0].next = 0x78
-                    elif cur_i == 1:
+                    elif cur_cstatic == 1:
                         oram[1].next = 0x9c
                         do.next = 2
-                    elif cur_i == 2:
+                    elif cur_cstatic == 2:
                         oram[do].next = put(0x3, 3)
                         put_adv(0x3, 3)
                     elif flush:
@@ -358,8 +361,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         no_adv = 1
                         oram[do].next = ob1
                         do_flush()
-                    elif cur_i - 3 > isize:
-                        if cur_i - 3 == isize + 1:
+                    elif cur_cstatic - 3 > isize:
+                        if cur_cstatic - 3 == isize + 1:
                             print("Put EOF")
                             i = EndOfBlock
                             outlen = codeLength[i]
@@ -367,26 +370,26 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             print("EOF BITS:", i, outlen, outbits)
                             oram[do].next = put(outbits, outlen)
                             put_adv(outbits, outlen)
-                        elif cur_i - 3 == isize + 2:
+                        elif cur_cstatic - 3 == isize + 2:
                             if doo != 0:
                                 oram[do].next = ob1
                                 do.next = do + 1
-                        elif cur_i - 3 == isize + 3:
+                        elif cur_cstatic - 3 == isize + 3:
                             print("c1")
                             oram[do].next = adler2 >> 8
                             do.next = do + 1
-                        elif cur_i - 3 == isize + 4:
+                        elif cur_cstatic - 3 == isize + 4:
                             print("c2")
                             oram[do].next = (adler2 & 0xFF)
                             do.next = do + 1
-                        elif cur_i - 3 == isize + 5:
+                        elif cur_cstatic - 3 == isize + 5:
                             print("c3")
                             oram[do].next = adler1 >> 8
                             do.next = do + 1
-                        elif cur_i - 3 == isize + 6:
+                        elif cur_cstatic - 3 == isize + 6:
                             print("c4")
                             oram[do].next = (adler1 & 0xFF)
-                        elif cur_i - 3 == isize + 7:
+                        elif cur_cstatic - 3 == isize + 7:
                             print("EOF finish")
                             o_done.next = True
                             o_data.next = do + 1
@@ -408,7 +411,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         put_adv(outbits, outlen)
 
                     if not no_adv:
-                        cur_i.next = cur_i + 1
+                        cur_cstatic.next = cur_cstatic + 1
 
                 elif state == d_state.STATIC:
 
@@ -531,7 +534,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         howOften.next = howOften - 1
                         numCodeLength.next = numCodeLength + 1
                     elif numCodeLength < numLiterals + numDistance:
-                        cur_i.next = 0
+                        cur_next.next = 0
                         state.next = d_state.NEXT
                     else:
                         state.next = d_state.READBL
@@ -673,6 +676,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     else:
                         if do_compress:
                             state.next = d_state.CSTATIC
+                            cur_cstatic.next = 0
                         elif method == 3:
                             state.next = d_state.DISTTREE
                         elif method == 4:
@@ -683,6 +687,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             state.next = d_state.NEXT
                         else:
                             state.next = d_state.NEXT
+                        cur_next.next = 0
                         cur_i.next = 0
 
                 elif state == d_state.SPREAD:
@@ -710,20 +715,20 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         filled.next = True
                     elif nb < 4:
                         pass
-                    elif cur_i == 0:
+                    elif cur_next == 0:
                         # print("INIT:", di, dio, instantMaxBit, maxBits)
                         if instantMaxBit <= maxBits:
                             cto = get4(0, maxBits)
-                            cur_i.next = instantMaxBit
+                            cur_next.next = instantMaxBit
                             mask = (1 << instantMaxBit) - 1
                             leaf.next = leaves[cto & mask]
                             # print(cur_i, mask, leaf, maxBits)
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")
-                    elif cur_i <= maxBits:
+                    elif cur_next <= maxBits:
                         # print("NEXT:", cur_i)
-                        if get_bits(leaf) <= cur_i:
+                        if get_bits(leaf) <= cur_next:
                             if get_bits(leaf) < 1:
                                 print("< 1 bits: ")
                                 raise Error("< 1 bits: ")
@@ -737,7 +742,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             else:
                                 state.next = d_state.INFLATE
                         else:
-                            print("FAIL get_bits(leaf) <= cur_i")
+                            print("FAIL get_bits(leaf) <= cur_next")
                             raise Error("?")
                     else:
                         print("no next token")
