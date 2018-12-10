@@ -722,12 +722,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             cur_next.next = instantMaxBit
                             mask = (1 << instantMaxBit) - 1
                             leaf.next = leaves[cto & mask]
-                            # print(cur_i, mask, leaf, maxBits)
+                            # print(cur_next, mask, leaf, maxBits)
                         else:
                             print("FAIL instantMaxBit <= maxBits")
                             raise Error("FAIL instantMaxBit <= maxBits")
                     elif cur_next <= maxBits:
-                        # print("NEXT:", cur_i)
+                        # print("NEXT:", cur_next)
                         if get_bits(leaf) <= cur_next:
                             if get_bits(leaf) < 1:
                                 print("< 1 bits: ")
@@ -754,7 +754,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         filled.next = True
                     elif nb < 4:
                         pass
-                    elif cur_i == 0:
+                    elif cur_next == 0:
                         # print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
                         if d_instantMaxBit <= d_maxBits:
                             token = code - 257
@@ -762,15 +762,15 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             extraLength = ExtraLengthBits[token]
                             # print("extra length bits:", extraLength)
                             cto = get4(extraLength, d_maxBits)
-                            cur_i.next = d_instantMaxBit
+                            cur_next.next = d_instantMaxBit
                             mask = (1 << d_instantMaxBit) - 1
                             leaf.next = d_leaves[cto & mask]
-                            # print(cur_i, mask, leaf, d_maxBits)
+                            # print(cur_next, mask, leaf, d_maxBits)
                         else:
                             raise Error("???")
 
-                    elif cur_i <= d_maxBits:
-                        if get_bits(leaf) <= cur_i:
+                    elif cur_next <= d_maxBits:
+                        if get_bits(leaf) <= cur_next:
                             if get_bits(leaf) == 0:
                                 raise Error("0 bits")
                             token = code - 257
@@ -798,7 +798,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             # print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
                             offset.next = do - distance
                             length.next = tlength
-                            cur_i.next = 0
+                            cur_next.next = 0
                             state.next = d_state.COPY
 
                         else:
@@ -833,6 +833,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 oram[do].next = code
                                 o_data.next = do + 1
                                 do.next = do + 1
+                                cur_next.next = 0
                                 state.next = d_state.NEXT
                                 # raise Error("DF!")
                             elif code == InvalidToken:
@@ -857,7 +858,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 else:
                                     # raise Error("TO DO")
                                     state.next = d_state.D_NEXT
-                            cur_i.next = 0
+                            cur_next.next = 0
 
                 elif state == d_state.COPY:
 
