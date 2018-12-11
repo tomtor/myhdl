@@ -62,6 +62,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     oraddr = Signal(intbv()[LBSIZE:])
     obyte = Signal(intbv()[8:])
     orbyte = Signal(intbv()[8:])
+    owe = Signal(bool())
     ocopy = Signal(bool())
     iraddr = Signal(intbv()[LBSIZE:])
 
@@ -69,6 +70,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     state = Signal(d_state.IDLE)
     method = Signal(intbv()[3:])
     final = Signal(bool())
+    first = Signal(bool())
     do_compress = Signal(bool())
 
     numLiterals = Signal(intbv()[9:])
@@ -458,7 +460,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             oaddr.next = do
                             obyte.next = adler1 & 0xFF
                         elif cur_cstatic - 3 == isize + 7:
-                            print("EOF finish")
+                            print("EOF finish", do)
                             o_done.next = True
                             o_data.next = do + 1
                             wait_data.next = True
@@ -870,7 +872,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             # print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
                             offset.next = do - distance
                             length.next = tlength
-                            cur_next.next = 0
+                            # cur_next.next = 0
+                            first.next = True
+                            cur_i.next = 0
                             state.next = d_state.COPY
 
                         else:
@@ -929,6 +933,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                     adv(extraLength + 5 + moreBits)
                                     offset.next = do - distance
                                     length.next = tlength
+                                    first.next = True
+                                    cur_i.next = 0
                                     state.next = d_state.COPY
                                 else:
                                     # raise Error("TO DO")
@@ -941,11 +947,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         filled.next = True
                     elif nb < 4:
                         pass
-                    elif method != 0 and cur_i == 0:
+                    #elif method != 0 and cur_i == 0:
+                    elif False and method != 0 and first:
+                        print("COPY INIT", cur_i)
+                        first.next = False
                         #nextb.next = oram[offset]
                         oraddr.next = offset + cur_i
                         #nextb.next = orbyte
-                        cur_i.next = 1
+                        # cur_i.next = 1
                         if length <= 1:
                             raise Error("length <= 1")
                     elif cur_i < length:
@@ -954,21 +963,30 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             oaddr.next = do
                             obyte.next = b3
                             adv(8)
+                            cur_i.next = cur_i + 1
+                            do.next = do + 1
+                            o_data.next = do + 1
                         else:
+                            oaddr.next = do
+                            obyte.next = oram[offset + cur_i]
+                            cur_i.next = cur_i + 1
+                            o_data.next = do + 1
+                            do.next = do + 1
+                            """
                             #oram[do].next = nextb # oram[offset + cur_i]
                             #nextb.next = oram[offset + cur_i]
-                            oaddr.next = do
-                            obyte.next = orbyte
+                            owe.next = True
                             oraddr.next = offset + cur_i
                             # nextb.next = orbyte
-                        cur_i.next = cur_i + 1
-                        o_data.next = do + 1
-                        do.next = do + 1
+                            cur_i.next = cur_i + 1
+                            if cur_i != 0:
+                                oaddr.next = do
+                                obyte.next = orbyte
+                                o_data.next = do + 1
+                                do.next = do + 1
+                            """
                     else:
-                        if method != 0:
-                            oram[do].next = nextb
-                            do.next = do + 1
-                        print("LENGTH: ", length)
+                        print("LENGTH: ", length, o_data)
                         if method == 0:
                             if not final:
                                 state.next = d_state.HEADER
@@ -977,7 +995,14 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 wait_data.next = True
                                 state.next = d_state.IDLE
                         else:
-                            cur_i.next = 0
+                            """
+                            # oram[do].next = nextb
+                            oaddr.next = do
+                            obyte.next = orbyte
+                            do.next = do + 1
+                            o_data.next = do + 1
+                            """
+                            cur_next.next = 0
                             state.next = d_state.NEXT
                     """
                     if not filled:

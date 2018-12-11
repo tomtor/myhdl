@@ -97,6 +97,7 @@ class TestDeflate(unittest.TestCase):
             print(now())
 
             last = o_data
+            print("GOT", last)
             i_mode.next = READ
             d_data = []
             for i in range(last):
