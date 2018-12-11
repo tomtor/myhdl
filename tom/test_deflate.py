@@ -264,7 +264,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     resume = Signal(modbv(0)[18:])
 
-    wtick = Signal(bool(0))
+    #wtick = Signal(bool(0))
+    wtick = Signal(intbv()[2:])
 
     @instance
     def clkgen():
