@@ -100,13 +100,14 @@ class TestDeflate(unittest.TestCase):
             print("GOT", last)
             i_mode.next = READ
             d_data = []
-            for i in range(last):
+            for i in range(last+2):
                 i_addr.next = i
                 tick()
                 yield delay(5)
                 tick()
                 yield delay(5)
-                d_data.append(bytes([o_data]))
+                if i > 1:
+                    d_data.append(bytes([o_data]))
             i_mode.next = IDLE
 
             d_data = b''.join(d_data)
@@ -144,15 +145,17 @@ class TestDeflate(unittest.TestCase):
             # raise Error("STOP")
 
             last = o_data
+            print("last", last)
             i_mode.next = READ
             c_data = []
-            for i in range(last):
+            for i in range(last+2):
                 i_addr.next = i
                 tick()
                 yield delay(5)
                 tick()
                 yield delay(5)
-                c_data.append(bytes([o_data]))
+                if i > 1:
+                    c_data.append(bytes([o_data]))
             i_mode.next = IDLE
 
             print("b_data:", len(b_data), b_data)
@@ -190,13 +193,14 @@ class TestDeflate(unittest.TestCase):
             last = o_data
             i_mode.next = READ
             d_data = []
-            for i in range(last):
+            for i in range(last + 2):
                 i_addr.next = i
                 tick()
                 yield delay(5)
                 tick()
                 yield delay(5)
-                d_data.append(bytes([o_data]))
+                if i > 1:
+                    d_data.append(bytes([o_data]))
             i_mode.next = IDLE
 
             d_data = b''.join(d_data)

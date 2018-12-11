@@ -947,63 +947,37 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         filled.next = True
                     elif nb < 4:
                         pass
-                    #elif method != 0 and cur_i == 0:
-                    elif False and method != 0 and first:
-                        print("COPY INIT", cur_i)
-                        first.next = False
-                        #nextb.next = oram[offset]
-                        oraddr.next = offset + cur_i
-                        #nextb.next = orbyte
-                        # cur_i.next = 1
-                        if length <= 1:
-                            raise Error("length <= 1")
-                    elif cur_i < length:
-                        if method == 0:
-                            # oram[do].next = b3
+                    elif method == 0:
+                        if cur_i < length:
                             oaddr.next = do
                             obyte.next = b3
                             adv(8)
                             cur_i.next = cur_i + 1
                             do.next = do + 1
                             o_data.next = do + 1
+                        elif not final:
+                            state.next = d_state.HEADER
                         else:
-                            oaddr.next = do
-                            obyte.next = oram[offset + cur_i]
-                            cur_i.next = cur_i + 1
-                            o_data.next = do + 1
-                            do.next = do + 1
-                            """
-                            #oram[do].next = nextb # oram[offset + cur_i]
-                            #nextb.next = oram[offset + cur_i]
-                            owe.next = True
-                            oraddr.next = offset + cur_i
-                            # nextb.next = orbyte
-                            cur_i.next = cur_i + 1
-                            if cur_i != 0:
-                                oaddr.next = do
-                                obyte.next = orbyte
-                                o_data.next = do + 1
-                                do.next = do + 1
-                            """
-                    else:
-                        print("LENGTH: ", length, o_data)
-                        if method == 0:
-                            if not final:
-                                state.next = d_state.HEADER
-                            else:
-                                o_done.next = True
-                                wait_data.next = True
-                                state.next = d_state.IDLE
-                        else:
-                            """
-                            # oram[do].next = nextb
+                            o_done.next = True
+                            wait_data.next = True
+                            state.next = d_state.IDLE
+                    elif cur_i < length + 1:
+                        owe.next = True
+                        oraddr.next = offset + cur_i
+                        cur_i.next = cur_i + 1
+                        if cur_i > 1:
+                            # print("byte", orbyte)
                             oaddr.next = do
                             obyte.next = orbyte
-                            do.next = do + 1
                             o_data.next = do + 1
-                            """
-                            cur_next.next = 0
-                            state.next = d_state.NEXT
+                            do.next = do + 1
+                    else:
+                        oaddr.next = do
+                        obyte.next = orbyte
+                        do.next = do + 1
+                        o_data.next = do + 1
+                        cur_next.next = 0
+                        state.next = d_state.NEXT
                     """
                     if not filled:
                         filled.next = True
@@ -1050,9 +1024,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif i_mode == READ:
 
-                o_data.next = oram[i_addr]
-                #oraddr.next = i_addr
-                #o_data.next = orbyte
+                #o_data.next = oram[i_addr]
+                oraddr.next = i_addr
+                o_data.next = orbyte
 
             elif i_mode == STARTC:
 
