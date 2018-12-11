@@ -944,21 +944,23 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif method != 0 and cur_i == 0:
                         #nextb.next = oram[offset]
                         oraddr.next = offset + cur_i
-                        nextb.next = orbyte
+                        #nextb.next = orbyte
                         cur_i.next = 1
                         if length <= 1:
                             raise Error("length <= 1")
                     elif cur_i < length:
                         if method == 0:
-                            oram[do].next = b3
+                            # oram[do].next = b3
+                            oaddr.next = do
+                            obyte.next = b3
                             adv(8)
                         else:
                             #oram[do].next = nextb # oram[offset + cur_i]
                             #nextb.next = oram[offset + cur_i]
                             oaddr.next = do
-                            obyte.next = 0x1
+                            obyte.next = orbyte
                             oraddr.next = offset + cur_i
-                            nextb.next = orbyte
+                            # nextb.next = orbyte
                         cur_i.next = cur_i + 1
                         o_data.next = do + 1
                         do.next = do + 1
@@ -1023,9 +1025,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif i_mode == READ:
 
-                #o_data.next = oram[i_addr]
-                oraddr.next = i_addr
-                o_data.next = orbyte
+                o_data.next = oram[i_addr]
+                #oraddr.next = i_addr
+                #o_data.next = orbyte
 
             elif i_mode == STARTC:
 
