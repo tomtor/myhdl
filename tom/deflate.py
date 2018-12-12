@@ -216,10 +216,12 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if nb != 4:
             print("----NB----")
             raise Error("NB")
+        bb4 = intbv(b4.val)[32:]
+        bb3 = intbv(b3.val)[24:]
+        bb2 = intbv(b2.val)[16:]
         # print("get4", b1,b2,b3,b4)
-        r = (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
+        return (((bb4 << 24) | (bb3 << 16) | (bb2 << 8) | b1) >>
              (dio + boffset)) & ((1 << width) - 1)
-        return r
 
     def adv(width):
         nshift = ((dio + width) >> 3)
@@ -291,8 +293,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         return (lcode << BITBITS) | lbits
 
     def get_bits(aleaf):
-        r = aleaf & ((1 << BITBITS) - 1)
-        return r
+        return aleaf & ((1 << BITBITS) - 1)
 
     def get_code(aleaf):
         return (aleaf >> BITBITS)  # & ((1 << CODEBITS) - 1)
@@ -861,8 +862,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             moreBits = ExtraDistanceBits[distanceCode >> 1]
                             # print("more bits:", moreBits)
                             # print("bits:", get_bits(leaf))
-                            mored = get4(extraLength + get_bits(leaf),
-                                         moreBits)
+                            mored = get4(extraLength + get_bits(leaf), moreBits)
                             # print("mored:", mored)
                             distance += mored
                             # print("distance more:", distance)

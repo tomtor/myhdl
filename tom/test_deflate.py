@@ -367,8 +367,8 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                         state.next = tb_state.FAIL
                         raise Error("bad result")
                     else:
-                        # pass
-                        print(tbi, o_data)
+                        pass
+                        # print(tbi, o_data)
                 i_addr.next = tbi
                 wtick.next = True
                 tbi.next = tbi + 1
@@ -377,6 +377,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 print("DECOMPRESS test OK!, pausing", tbi)
                 i_mode.next = IDLE
                 state.next = tb_state.PAUSE
+                # state.next = tb_state.CPAUSE
                 resume.next = 1
 
         elif state == tb_state.PAUSE:
