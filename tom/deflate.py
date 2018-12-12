@@ -62,7 +62,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     oraddr = Signal(intbv()[LBSIZE:])
     obyte = Signal(intbv()[8:])
     orbyte = Signal(intbv()[8:])
-    owe = Signal(bool())
     ocopy = Signal(bool())
     iraddr = Signal(intbv()[LBSIZE:])
 
@@ -148,10 +147,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     adler2 = Signal(intbv()[16:])
     ladler1 = Signal(intbv()[16:])
 
-    """
-    wtick = Signal(bool())
-    """
-    nextb = Signal(intbv()[8:])
 
     @always(clk.posedge)
     def oramwrite():
@@ -160,19 +155,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     #@always_comb
     @always(clk.posedge)
     def oramread():
-        """
-        if ocopy:
-            oram[oaddr].next = oram[oraddr]
-        else:
-            """
         orbyte.next = oram[oraddr]
-
-    """
-    def owrite(a, b):
-        print("owrite", a, b)
-        oaddr.next = a
-        obyte.next = b
-        """
 
     @always_seq(clk.posedge, reset)
     def fill_buf():
@@ -397,27 +380,19 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         adler1.next = 1
                         adler2.next = 0
                         ladler1.next = 0
-                        #oram[0].next = 0x78
-                        #owrite(0, 0x78)
                         oaddr.next = 0
                         obyte.next = 0x78
                     elif cur_cstatic == 1:
-                        #oram[1].next = 0x9c
-                        #owrite(1, 0x9c)
                         oaddr.next = 1
                         obyte.next = 0x9c
                         do.next = 2
                     elif cur_cstatic == 2:
-                        #oram[do].next = put(0x3, 3)
-                        #owrite(do, put(0x3, 3))
                         oaddr.next = do
                         obyte.next = put(0x3, 3)
                         put_adv(0x3, 3)
                     elif flush:
                         # print(do, ob1)
                         no_adv = 1
-                        #oram[do].next = ob1
-                        #owrite(do, ob1)
                         oaddr.next = do
                         obyte.next = ob1
                         do_flush()
@@ -428,44 +403,32 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             outlen = codeLength[i]
                             outbits = code_bits[i]
                             print("EOF BITS:", i, outlen, outbits)
-                            # oram[do].next = put(outbits, outlen)
-                            #owrite(do, put(outbits, outlen))
                             oaddr.next = do
                             obyte.next = put(outbits, outlen)
                             put_adv(outbits, outlen)
                         elif cur_cstatic - 3 == isize + 2:
                             adler2.next = (adler2 + ladler1) % 65521
                             if doo != 0:
-                                #oram[do].next = ob1
-                                #owrite(do, ob1)
                                 oaddr.next = do
                                 obyte.next = ob1
                                 do.next = do + 1
                         elif cur_cstatic - 3 == isize + 3:
                             print("c1")
-                            #oram[do].next = adler2 >> 8
-                            #owrite(do, adler2 >> 8)
                             oaddr.next = do
                             obyte.next = adler2 >> 8
                             do.next = do + 1
                         elif cur_cstatic - 3 == isize + 4:
                             print("c2")
-                            #oram[do].next = (adler2 & 0xFF)
-                            #owrite(do, adler2 & 0xFF)
                             oaddr.next = do
                             obyte.next = adler2 & 0xFF
                             do.next = do + 1
                         elif cur_cstatic - 3 == isize + 5:
                             print("c3")
-                            #oram[do].next = adler1 >> 8
-                            #owrite(do, adler1 >> 8)
                             oaddr.next = do
                             obyte.next = adler1 >> 8
                             do.next = do + 1
                         elif cur_cstatic - 3 == isize + 6:
                             print("c4")
-                            #oram[do].next = (adler1 & 0xFF)
-                            #owrite(do, adler1 & 0xFF)
                             oaddr.next = do
                             obyte.next = adler1 & 0xFF
                         elif cur_cstatic - 3 == isize + 7:
@@ -473,13 +436,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             o_done.next = True
                             o_data.next = do + 1
                             wait_data.next = True
-                            # filled.next = False
                             state.next = d_state.IDLE
                     else:
-                        #bdata = get4(0, 8)  # iram[cur_i - 3]
                         bdata = b1adler
                         adv(8)
-                        # bdata = iram[cur_i - 3]
                         adler1_next = (adler1 + bdata) % 65521
                         adler1.next = adler1_next
                         adler2.next = (adler2 + ladler1) % 65521
@@ -488,7 +448,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]
                         # print("BITS:", bdata, outlen, outbits)
-                        #oram[do].next = put(outbits, outlen)
                         oaddr.next = do
                         obyte.next = put(outbits, outlen)
                         put_adv(outbits, outlen)
@@ -635,11 +594,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         limit = len(d_leaves)
                     if cur_i < limit:
                         cur_i.next = cur_i + 1
-                        """
-                    if cur_i < len(bitLengthCount):
-                        bitLengthCount[cur_i].next = 0
-                        cur_i.next = cur_i + 1
-                    """
                     else:
                         print("DID HF1 INIT")
                         cur_i.next = 0
@@ -734,9 +688,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 # print(canonical, bits)
                                 reverse.next = rev_bits(canonical, bits)
                                 # print("LEAF: ", spread_i, bits, reverse, canonical)
+                                leaf.next = makeLeaf(spread_i, bits)
                                 HF4.next = 1
                             elif method == 4:
-                                d_leaves[reverse].next = makeLeaf(spread_i, bits)
+                                d_leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
                                 if bits <= d_instantMaxBit:
                                     if reverse + (1 << bits) <= d_instantMask:
                                         step.next = 1 << bits
@@ -748,7 +703,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                     spread_i.next = spread_i + 1
                                 HF4.next = 0
                             else:
-                                leaves[reverse].next = makeLeaf(spread_i, bits)
+                                leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
                                 code_bits[spread_i].next = reverse
                                 if bits <= instantMaxBit:
                                     if reverse + (1 << bits) <= instantMask:
@@ -921,8 +876,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             if code < EndOfBlock:
                                 # print("B:", code, di, do)
-                                #oram[do].next = code
-                                #owrite(do, code)
                                 oaddr.next = do
                                 obyte.next = code
                                 o_data.next = do + 1
@@ -977,7 +930,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             wait_data.next = True
                             state.next = d_state.IDLE
                     elif cur_i < length + 1:
-                        owe.next = True
                         oraddr.next = offset + cur_i
                         cur_i.next = cur_i + 1
                         if cur_i > 1:
@@ -993,43 +945,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         o_data.next = do + 1
                         cur_next.next = 0
                         state.next = d_state.NEXT
-                    """
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif cur_i < length:
-                        if method == 0:
-                            #oram[do].next = b3
-                            #owrite(do, b3)
-                            oaddr.next = do
-                            obyte.next = b3
-                            adv(8)
-                        else:
-                            #oram[do].next = oram[offset + cur_i]
-                            #owrite(do, oram[offset + cur_i])
-                            #oaddr.next = do
-                            #obyte.next = oram[offset + cur_i]
-                            ocopy.next = True
-                            oaddr.next = do
-                            oraddr.next = offset + cur_i
-                        cur_i.next = cur_i + 1
-                        o_data.next = do + 1
-                        do.next = do + 1
-                    else:
-                        # print("LENGTH: ", length)
-                        if method == 0:
-                            if not final:
-                                state.next = d_state.HEADER
-                            else:
-                                o_done.next = True
-                                wait_data.next = True
-                                state.next = d_state.IDLE
-                        else:
-                            ocopy.next = False
-                            cur_i.next = 0
-                            state.next = d_state.NEXT
-                    """
 
             elif i_mode == WRITE:
 
@@ -1039,7 +954,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif i_mode == READ:
 
-                #o_data.next = oram[i_addr]
+                # o_data.next = oram[i_addr]
                 oraddr.next = i_addr
                 o_data.next = orbyte
 
@@ -1061,12 +976,6 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 do_compress.next = False
                 o_done.next = False
-                """
-                for i in range(len(leaves)):
-                    leaves[i].next = 0
-                for i in range(len(d_leaves)):
-                    d_leaves[i].next = 0
-                    """
                 di.next = 2
                 dio.next = 0
                 do.next = 0

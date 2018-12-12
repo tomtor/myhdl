@@ -298,7 +298,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
     def logic():
 
         if not reset or state == tb_state.RESET:
-            led0_g.next = 0
+            # led0_g.next = 0
             led1_b.next = 0
             led2_r.next = 0
             tbi.next = 0
@@ -451,7 +451,6 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 state.next = tb_state.VDECOMPRESS
 
         elif state == tb_state.VDECOMPRESS:
-            led0_g.next = 0
             i_mode.next = STARTD
             state.next = tb_state.VWAIT
 
