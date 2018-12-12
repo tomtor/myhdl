@@ -13,7 +13,7 @@ from https://create.stephan-brumme.com/deflate-decoder
 from math import log2
 
 from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
-    enum, always_seq, always_comb
+    enum, always_seq, always_comb, concat
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
@@ -133,10 +133,10 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     do = Signal(intbv()[LBSIZE:])
     doo = Signal(intbv()[3:])
 
-    b1 = Signal(intbv()[8:])
+    b1 = Signal(intbv()[32:])
     b1adler = Signal(intbv()[8:])
-    b2 = Signal(intbv()[8:])
-    b3 = Signal(intbv()[8:])
+    b2 = Signal(intbv()[24:])
+    b3 = Signal(intbv()[16:])
     b4 = Signal(intbv()[8:])
     nb = Signal(intbv()[3:])
     newnb = Signal(intbv()[3:])
@@ -216,12 +216,16 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         if nb != 4:
             print("----NB----")
             raise Error("NB")
-        bb4 = intbv(b4.val)[32:]
-        bb3 = intbv(b3.val)[24:]
-        bb2 = intbv(b2.val)[16:]
+        # this worls in Icarus but fails in Vivado
+        # bb4 = intbv(b4.val)[32:]
+        # bb3 = intbv(b3.val)[24:]
+        # bb2 = intbv(b2.val)[16:]
         # print("get4", b1,b2,b3,b4)
-        return (((bb4 << 24) | (bb3 << 16) | (bb2 << 8) | b1) >>
+        return (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
              (dio + boffset)) & ((1 << width) - 1)
+        # this fails in MyHDL:
+        # return concat(b4, b3, b2, b1)(dio + offset + width, dio + boffset)
+
 
     def adv(width):
         nshift = ((dio + width) >> 3)

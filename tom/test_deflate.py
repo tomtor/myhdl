@@ -376,8 +376,9 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 print(len(UDATA))
                 print("DECOMPRESS test OK!, pausing", tbi)
                 i_mode.next = IDLE
-                state.next = tb_state.PAUSE
+                # state.next = tb_state.PAUSE
                 # state.next = tb_state.CPAUSE
+                state.next = tb_state.CWRITE
                 resume.next = 1
 
         elif state == tb_state.PAUSE:
