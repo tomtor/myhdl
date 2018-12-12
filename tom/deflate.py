@@ -13,7 +13,7 @@ from https://create.stephan-brumme.com/deflate-decoder
 from math import log2
 
 from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
-    enum, always_seq, always_comb, concat
+    enum, always_seq, always_comb, concat, ConcatSignal
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
@@ -222,7 +222,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         # bb2 = intbv(b2.val)[16:]
         # print("get4", b1,b2,b3,b4)
         return (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
-             (dio + boffset)) & ((1 << width) - 1)
+            (dio + boffset)) & ((1 << width) - 1)
         # this fails in MyHDL:
         # return concat(b4, b3, b2, b1)(dio + offset + width, dio + boffset)
 

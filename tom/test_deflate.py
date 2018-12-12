@@ -539,7 +539,7 @@ if 1: # not COSIMULATION:
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                         Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
 
-    tb.convert(initial_values=True)
+    tb.convert(initial_values=False)
 
 if 1:
     SLOWDOWN = 1
