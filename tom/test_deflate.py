@@ -259,7 +259,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
 
     tb_state = enum('RESET', 'WRITE', 'DECOMPRESS', 'WAIT', 'VERIFY', 'PAUSE',
                     'CWRITE', 'COMPRESS', 'CWAIT', 'CRESULT', 'VWRITE',
-                    'VDECOMPRESS', 'VWAIT', 'CVERIFY', 'CPAUSE')
+                    'VDECOMPRESS', 'VWAIT', 'CVERIFY', 'CPAUSE', 'FAIL')
     state = Signal(tb_state.RESET)
 
     tbi = Signal(modbv(0)[15:])
@@ -307,6 +307,12 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         elif SLOWDOWN > 1 and scounter != 0:
             pass
 
+        elif state == tb_state.FAIL:
+
+            led0_g.next = not led0_g
+            led1_b.next = not led1_b
+            led2_r.next = not led2_r
+
         elif state == tb_state.WRITE:
             if tbi < len(CDATA):
                 # print(tbi)
@@ -340,7 +346,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 wtick.next = True
 
         elif state == tb_state.VERIFY:
-            # print("VERIFY", o_data)
+            #print("VERIFY", o_data)
             led1_b.next = 1
             if wtick:
                 wtick.next = False
@@ -356,8 +362,11 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                         state.next = tb_state.RESET
                         i_mode.next = IDLE
                         print("FAIL", len(UDATA), tbi, o_data)
+                        state.next = tb_state.FAIL
                         raise Error("bad result")
-                        state.next = tb_state.PAUSE
+                    else:
+                        # pass
+                        print(tbi, o_data)
                 i_addr.next = tbi
                 wtick.next = True
                 tbi.next = tbi + 1
@@ -487,15 +496,15 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                         state.next = tb_state.RESET
                         i_mode.next = IDLE
                         print("FAIL", len(UDATA), tbi, ud, o_data)
+                        state.next = tb_state.FAIL
                         raise Error("bad result")
-                        state.next = tb_state.CPAUSE
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
                 wtick.next = True
             else:
                 print(len(UDATA))
                 print("ALL OK!", tbi)
-                led0_g.next = 1
+                led0_g.next = not led0_g
                 i_mode.next = IDLE
                 state.next = tb_state.CPAUSE
                 resume.next = 1
@@ -528,15 +537,17 @@ if 1: # not COSIMULATION:
 
     tb.convert(initial_values=True)
 
-if 0:
+if 1:
     SLOWDOWN = 1
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
                             Signal(bool(0)), Signal(bool(0)), Signal(bool(0)))
     print("convert SLOWDOWN: ", SLOWDOWN)
     tb.convert(name="test_fast_bench", initial_values=False)
+    """
     os.system("iverilog -o test_deflate " +
               "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
-else:
+              """
+if 0:
     print("Start Unit test")
     unittest.main(verbosity=2)

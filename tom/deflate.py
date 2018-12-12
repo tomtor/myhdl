@@ -27,7 +27,8 @@ else:
 
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT',
-               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC')
+               'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC',
+               'SEARCH')
                # encoding='one_hot')
 
 CodeLengthOrder = (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14,
@@ -92,7 +93,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
     bitLengthCount = [Signal(intbv(0)[9:]) for _ in range(MaxCodeLength+1)]
     nextCode = [Signal(intbv()[CODEBITS:]) for _ in range(MaxCodeLength)]
     reverse = Signal(intbv()[CODEBITS:])
-    HF4 = Signal(bool())
+    HF4_init = Signal(bool())
     code_bits = [Signal(intbv()[9:]) for _ in range(MaxBitLength)]
     distanceLength = [Signal(intbv()[4:]) for _ in range(32)]
 
@@ -118,7 +119,9 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
     cur_i = Signal(intbv()[LBSIZE:])
     spread_i = Signal(intbv()[9:])
+    cur_HF1 = Signal(intbv()[10:])
     cur_cstatic = Signal(intbv()[LBSIZE:])
+    cur_search = Signal(intbv()[5:])
     cur_next = Signal(intbv()[5:])
 
     length = Signal(intbv()[LBSIZE:])
@@ -301,8 +304,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             state.next = d_state.IDLE
             o_done.next = False
             wait_data.next = True
-            oaddr.next = 0
-            obyte.next = 0
+            # oaddr.next = 0
+            # obyte.next = 0
         else:
             if i_mode == IDLE:
 
@@ -407,6 +410,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             obyte.next = put(outbits, outlen)
                             put_adv(outbits, outlen)
                         elif cur_cstatic - 3 == isize + 2:
+                            print("calc end adler")
                             adler2.next = (adler2 + ladler1) % 65521
                             if doo != 0:
                                 oaddr.next = do
@@ -437,23 +441,47 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             o_data.next = do + 1
                             wait_data.next = True
                             state.next = d_state.IDLE
+                        else:
+                            print(cur_cstatic, isize)
+                            raise Error("???")
                     else:
                         bdata = b1adler
-                        adv(8)
+                        # adv(8)
                         adler1_next = (adler1 + bdata) % 65521
                         adler1.next = adler1_next
                         adler2.next = (adler2 + ladler1) % 65521
                         ladler1.next = adler1_next
                         # print("in: ", bdata)
+                        state.next = d_state.SEARCH
+                        cur_search.next = 0
+                        """
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]
                         # print("BITS:", bdata, outlen, outbits)
                         oaddr.next = do
                         obyte.next = put(outbits, outlen)
                         put_adv(outbits, outlen)
+                        """
 
                     if not no_adv:
                         cur_cstatic.next = cur_cstatic + 1
+
+                elif state == d_state.SEARCH:
+
+                    if not filled:
+                        filled.next = True
+                    elif nb < 4:
+                        pass
+                    else:
+                        bdata = b1adler
+                        adv(8)
+                        outlen = codeLength[bdata]
+                        outbits = code_bits[bdata]
+                        # print("BITS:", bdata, outlen, outbits)
+                        oaddr.next = do
+                        obyte.next = put(outbits, outlen)
+                        put_adv(outbits, outlen)
+                        state.next = d_state.CSTATIC
 
                 elif state == d_state.STATIC:
 
@@ -466,7 +494,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     for i in range(280, 288):
                         codeLength[i].next = 8
                     numCodeLength.next = 288
-                    cur_i.next = 0
+                    cur_HF1.next = 0
                     state.next = d_state.HF1
 
                 elif state == d_state.BL:
@@ -497,7 +525,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             numCodeLength.next = numCodeLength + 1
                         else:
                             numCodeLength.next = CodeLengths
-                            cur_i.next = 0
+                            cur_HF1.next = 0
                             state.next = d_state.HF1
 
                 elif state == d_state.READBL:
@@ -554,7 +582,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         else:
                             numCodeLength.next = MaxBitLength
                             method.next = 3  # Start building bit tree
-                            cur_i.next = 0
+                            cur_HF1.next = 0
                             state.next = d_state.HF1
 
                 elif state == d_state.DISTTREE:
@@ -565,7 +593,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         # print(i, distanceLength[i])
                     numCodeLength.next = 32
                     method.next = 4  # Start building dist tree
-                    cur_i.next = 0
+                    # cur_i.next = 0
+                    cur_HF1.next = 0
                     state.next = d_state.HF1
 
                 elif state == d_state.REPEAT:
@@ -583,17 +612,17 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                 elif state == d_state.HF1:
 
-                    if cur_i < len(bitLengthCount):
-                        bitLengthCount[cur_i].next = 0
-                    if cur_i < len(d_leaves):
-                        d_leaves[cur_i].next = 0
-                    if method != 4 and cur_i < len(leaves):
-                        leaves[cur_i].next = 0
+                    if cur_HF1 < len(bitLengthCount):
+                        bitLengthCount[cur_HF1].next = 0
+                    if cur_HF1 < len(d_leaves):
+                        d_leaves[cur_HF1].next = 0
+                    if method != 4 and cur_HF1 < len(leaves):
+                        leaves[cur_HF1].next = 0
                     limit = len(leaves)
                     if method == 4:
                         limit = len(d_leaves)
-                    if cur_i < limit:
-                        cur_i.next = cur_i + 1
+                    if cur_HF1 < limit:
+                        cur_HF1.next = cur_HF1 + 1
                     else:
                         print("DID HF1 INIT")
                         cur_i.next = 0
@@ -671,7 +700,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         state.next = d_state.HF4
                         cur_i.next = 0
                         spread_i.next = 0
-                        HF4.next = 0
+                        HF4_init.next = 0
                         print("to HF4")
 
                 elif state == d_state.HF4:
@@ -680,7 +709,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     if spread_i < numCodeLength:
                         bits = codeLength[spread_i]
                         if bits != 0:
-                            if HF4 == 0:
+                            if HF4_init == 0:
                                 canonical = nextCode[bits]
                                 nextCode[bits].next = nextCode[bits] + 1
                                 if bits > MaxCodeLength:
@@ -689,7 +718,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                 reverse.next = rev_bits(canonical, bits)
                                 # print("LEAF: ", spread_i, bits, reverse, canonical)
                                 leaf.next = makeLeaf(spread_i, bits)
-                                HF4.next = 1
+                                HF4_init.next = 1
                             elif method == 4:
                                 d_leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
                                 if bits <= d_instantMaxBit:
@@ -701,7 +730,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                         spread_i.next = spread_i + 1
                                 else:
                                     spread_i.next = spread_i + 1
-                                HF4.next = 0
+                                HF4_init.next = 0
                             else:
                                 leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
                                 code_bits[spread_i].next = reverse
@@ -714,7 +743,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                                         spread_i.next = spread_i + 1
                                 else:
                                     spread_i.next = spread_i + 1
-                                HF4.next = 0
+                                HF4_init.next = 0
                         else:
                             spread_i.next = spread_i + 1
                     else:
@@ -951,6 +980,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 # print("WRITE:", i_addr, i_data)
                 iram[i_addr].next = i_data
                 isize.next = i_addr
+                wait_data.next = True
 
             elif i_mode == READ:
 
