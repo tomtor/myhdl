@@ -9,11 +9,14 @@ build: $(MODULES)
 
 test: icarus icarus10
 
-icarus: build
+test_fast_bench.v: $(MODULES)
+	for p in $?; do $(PYTHON) $$p; done
+
+icarus: test_fast_bench.v
 	iverilog -o test_deflate test_fast_bench.v dump.v
 	vvp test_deflate
 
-icarus10: build
+icarus10: test_fast_bench.v
 	/usr/bin/iverilog -o test_deflate test_fast_bench.v dump.v
 	/usr/bin/vvp test_deflate
 
