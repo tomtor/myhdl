@@ -163,6 +163,8 @@ class TestDeflate(unittest.TestCase):
             print("c_data:", len(c_data), c_data)
             print("zl_data:", len(zl_data), zl_data)
 
+            print("zlib test:", zlib.decompress(c_data))
+
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE
             for i in range(len(c_data)):
@@ -208,7 +210,7 @@ class TestDeflate(unittest.TestCase):
             self.assertEqual(b_data, d_data, "decompress after compress does NOT match")
             print(len(b_data), len(zl_data), len(c_data))
 
-        for loop in range(3):
+        for loop in range(1):
             for mode in range(4):
                 self.runTests(test_decompress)
 
@@ -548,6 +550,6 @@ if 1:
               "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
               """
-if 0:
+if 1:
     print("Start Unit test")
     unittest.main(verbosity=2)
