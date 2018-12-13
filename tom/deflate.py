@@ -510,20 +510,24 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
 
             elif state == d_state.DISTANCE:
 
-                print("DISTANCE", cur_i, cur_search)
-                if CopyDistance[cur_i+1] > cur_search:
+                print("DISTANCE", di, do, cur_i, cur_search)
+                nextdist = CopyDistance[cur_i+1]
+                if nextdist > cur_search:
                     print("Found distance", cur_i)
-                    extra_dist = cur_search - CopyDistance[cur_i]
+                    copydist = CopyDistance[cur_i]
+                    extra_dist = cur_search - copydist
                     print("extra dist", extra_dist)
-                    extra_bits = ExtraDistanceBits[cur_i/2]
+                    extra_bits = ExtraDistanceBits[cur_i//2]
                     print("extra bits", extra_bits)
-                    outcode = reverse(cur_i, 5)
-                    put(cur_i, 5)
-                    put(extra_dist, extra_bits)
-                    put_adv(5 + extra_bits)
-
-                raise Error("To Do")
-                state.next = d_state.CSTATIC
+                    if extra_dist >= (1 << extra_bits) - 1:
+                        raise Error("too few extra")
+                    outcode = (rev_bits(cur_i, 5) | (extra_dist << 5))
+                    oaddr.next = do
+                    do.next = do + 1
+                    o_progress.next = do + 1
+                    obyte.next = put(outcode, 5 + extra_bits)
+                    put_adv(outcode, 5 + extra_bits)
+                    state.next = d_state.CSTATIC
 
             elif state == d_state.SEARCH:
 
@@ -532,19 +536,21 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                 elif nb < 4:
                     pass
                 else:
-                    if cur_search >= 0 and di > 3:
+                    if cur_search >= 0 and di > 3 and di < isize - 3:
                         if iram[cur_search] == b1 and \
                                 iram[cur_search+1] == b2 and \
                                 iram[cur_search+2] == b3 and \
                                 iram[cur_search+3] == b4:
                             print("found:", cur_search, di)
+                            adv(24)
                             # Length is 3 code
-                            bdata = 257
-                            adv(8)
-                            outlen = codeLength[bdata]
-                            outbits = code_bits[bdata]
-                            print("BITS:", bdata, outlen, outbits)
+                            lencode = 257
+                            outlen = codeLength[lencode]
+                            outbits = code_bits[lencode]
+                            print("BITS:", outlen, outbits)
                             oaddr.next = do
+                            do.next = do + 1
+                            o_progress.next = do + 1
                             obyte.next = put(outbits, outlen)
                             put_adv(outbits, outlen)
 

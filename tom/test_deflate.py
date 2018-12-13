@@ -545,6 +545,6 @@ if 1:
               "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
               """
-if 0:
+if 1:
     print("Start Unit test")
     unittest.main(verbosity=2)
