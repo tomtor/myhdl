@@ -379,6 +379,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 print(len(UDATA))
                 print("DECOMPRESS test OK!, pausing", tbi)
                 i_mode.next = IDLE
+                tbi.next = 0
                 # state.next = tb_state.PAUSE
                 # state.next = tb_state.CPAUSE
                 tstate.next = tb_state.CWRITE
@@ -439,9 +440,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 led2_r.next = 0
                 if scounter == 0:
                     led1_b.next = not led1_b
-                if tbi >= 0:
-                    # print(tbi-1, o_data)
-                    d_data[tbi-0].next = o_byte
+                d_data[tbi].next = o_byte
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
                 wtick.next = True
@@ -478,6 +477,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 print("WAIT DECOMPRESS VERIFY")
                 i_mode.next = IDLE
             elif o_done:
+                print("DONE DECOMPRESS VERIFY", o_progress)
                 tstate.next = tb_state.CVERIFY
                 if scounter == 0:
                     led1_b.next = not led1_b
@@ -487,24 +487,23 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 wtick.next = True
 
         elif tstate == tb_state.CVERIFY:
-            print("COMPRESS VERIFY", tbi, o_byte)
+            # print("COMPRESS VERIFY", tbi, o_byte)
             led1_b.next = 1
             if wtick:
                 wtick.next = False
-            elif tbi < len(UDATA) + 1:
+            elif tbi < len(UDATA):
                 led1_b.next = 0
                 if scounter == 0:
                     led2_r.next = not led2_r
-                if tbi > 0:
-                    # print(tbi, o_data)
-                    d_data[tbi-1].next = o_byte
-                    ud = UDATA[tbi - 1]
-                    if o_byte != ud:
-                        tstate.next = tb_state.RESET
-                        i_mode.next = IDLE
-                        print("FAIL", len(UDATA), tbi, ud, o_byte)
-                        tstate.next = tb_state.FAIL
-                        raise Error("bad result")
+                # print(tbi, o_data)
+                d_data[tbi].next = o_byte
+                ud = UDATA[tbi]
+                if o_byte != ud:
+                    tstate.next = tb_state.RESET
+                    i_mode.next = IDLE
+                    print("FAIL", len(UDATA), tbi, ud, o_byte)
+                    tstate.next = tb_state.FAIL
+                    raise Error("bad result")
                 tbi.next = tbi + 1
                 i_addr.next = tbi + 1
                 wtick.next = True
@@ -555,6 +554,6 @@ if 1:
               "test_fast_bench.v dump.v; " +
               "vvp test_deflate")
               """
-if 1:
+if 0:
     print("Start Unit test")
     unittest.main(verbosity=2)

@@ -502,7 +502,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                     adler1.next = adler1_next
                     adler2.next = (adler2 + ladler1) % 65521
                     ladler1.next = adler1_next
-                    # print("in: ", bdata)
+                    # print("in: ", bdata, di, isize)
                     state.next = d_state.SEARCH
                     cur_search.next = 0
                     """
