@@ -312,711 +312,711 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             # oaddr.next = 0
             # obyte.next = 0
         else:
-            if i_mode == IDLE:
 
-                if state == d_state.IDLE:
+            if state == d_state.IDLE:
 
+                wait_data.next = True
+                ocopy.next = False
+
+                if i_mode == WRITE:
+
+                    # print("WRITE:", i_addr, i_data)
+                    iram[i_addr].next = i_data
+                    isize.next = i_addr
                     wait_data.next = True
-                    ocopy.next = False
 
-                elif state == d_state.HEADER:
+                elif i_mode == READ:
 
-                    """
-                    # Read block header
-                    if di == 0:
-                        print(iram[di])
-                        if iram[di] == 0x78:
-                            print("deflate mode")
-                        else:
-                            raise Error("unexpected mode")
-                    elif di == 1:
-                        print(iram[di])
-                        if iram[di] != 0x9c:
-                            raise Error("unexpected level")
-                    """
+                    # o_data.next = oram[i_addr]
+                    oraddr.next = i_addr
+                    o_data.next = orbyte
 
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
+                elif i_mode == STARTC:
+
+                    print("STARTC")
+                    do_compress.next = True
+                    method.next = 1
+                    o_done.next = False
+                    di.next = 0
+                    dio.next = 0
+                    do.next = 0
+                    doo.next = 0
+                    filled.next = True
+                    wait_data.next = False
+                    state.next = d_state.STATIC
+
+                elif i_mode == STARTD:
+
+                    do_compress.next = False
+                    o_done.next = False
+                    di.next = 2
+                    dio.next = 0
+                    do.next = 0
+                    doo.next = 0
+                    filled.next = True
+                    wait_data.next = False
+                    state.next = d_state.HEADER
+
+
+            elif state == d_state.HEADER:
+
+                """
+                # Read block header
+                if di == 0:
+                    print(iram[di])
+                    if iram[di] == 0x78:
+                        print("deflate mode")
                     else:
-                        if get4(0, 1):
-                            print("final")
-                            final.next = True
-                        i = get4(1, 2)
-                        method.next = i
-                        print("method: %d" % i)
-                        # print(di, dio, nb, b1, b2, b3, b4, i)
-                        if i == 2:
-                            state.next = d_state.BL
-                            numCodeLength.next = 0
-                            numLiterals.next = 0
-                            static.next = False
-                            adv(3)
-                        elif i == 1:
-                            static.next = True
-                            state.next = d_state.STATIC
-                            adv(3)
-                        elif i == 0:
-                            state.next = d_state.COPY
-                            skip = 8 - dio
-                            if skip <= 2:
-                                skip = 16 - dio
-                            i = get4(skip, 16)
-                            adv(skip + 16)
-                            length.next = i
-                            cur_i.next = 0
-                            offset.next = 7
-                        else:
-                            print("Bad method")
-                            raise Error("Bad method")
+                        raise Error("unexpected mode")
+                elif di == 1:
+                    print(iram[di])
+                    if iram[di] != 0x9c:
+                        raise Error("unexpected level")
+                """
 
-                elif state == d_state.CSTATIC:
-
-                    # print("CSTATIC", cur_i, ob1, do, doo, isize)
-
-                    no_adv = 0
-                    if not filled:
-                        no_adv = 1
-                        filled.next = True
-                    elif nb < 4:
-                        no_adv = 1
-                        pass
-                    elif cur_cstatic == 0:
-                        flush.next = False
-                        ob1.next = 0
-                        adler1.next = 1
-                        adler2.next = 0
-                        ladler1.next = 0
-                        oaddr.next = 0
-                        obyte.next = 0x78
-                    elif cur_cstatic == 1:
-                        oaddr.next = 1
-                        obyte.next = 0x9c
-                        do.next = 2
-                    elif cur_cstatic == 2:
-                        oaddr.next = do
-                        obyte.next = put(0x3, 3)
-                        put_adv(0x3, 3)
-                    elif flush:
-                        # print(do, ob1)
-                        no_adv = 1
-                        oaddr.next = do
-                        obyte.next = ob1
-                        do_flush()
-                    elif cur_cstatic - 3 > isize:
-                        if cur_cstatic - 3 == isize + 1:
-                            print("Put EOF")
-                            i = EndOfBlock
-                            outlen = codeLength[i]
-                            outbits = code_bits[i]
-                            print("EOF BITS:", i, outlen, outbits)
-                            oaddr.next = do
-                            obyte.next = put(outbits, outlen)
-                            put_adv(outbits, outlen)
-                        elif cur_cstatic - 3 == isize + 2:
-                            print("calc end adler")
-                            adler2.next = (adler2 + ladler1) % 65521
-                            if doo != 0:
-                                oaddr.next = do
-                                obyte.next = ob1
-                                do.next = do + 1
-                        elif cur_cstatic - 3 == isize + 3:
-                            print("c1")
-                            oaddr.next = do
-                            obyte.next = adler2 >> 8
-                            do.next = do + 1
-                        elif cur_cstatic - 3 == isize + 4:
-                            print("c2")
-                            oaddr.next = do
-                            obyte.next = adler2 & 0xFF
-                            do.next = do + 1
-                        elif cur_cstatic - 3 == isize + 5:
-                            print("c3")
-                            oaddr.next = do
-                            obyte.next = adler1 >> 8
-                            do.next = do + 1
-                        elif cur_cstatic - 3 == isize + 6:
-                            print("c4")
-                            oaddr.next = do
-                            obyte.next = adler1 & 0xFF
-                        elif cur_cstatic - 3 == isize + 7:
-                            print("EOF finish", do)
-                            o_done.next = True
-                            o_data.next = do + 1
-                            wait_data.next = True
-                            state.next = d_state.IDLE
-                        else:
-                            print(cur_cstatic, isize)
-                            raise Error("???")
-                    else:
-                        bdata = b1adler
-                        # adv(8)
-                        adler1_next = (adler1 + bdata) % 65521
-                        adler1.next = adler1_next
-                        adler2.next = (adler2 + ladler1) % 65521
-                        ladler1.next = adler1_next
-                        # print("in: ", bdata)
-                        state.next = d_state.SEARCH
-                        cur_search.next = 0
-                        """
-                        outlen = codeLength[bdata]
-                        outbits = code_bits[bdata]
-                        # print("BITS:", bdata, outlen, outbits)
-                        oaddr.next = do
-                        obyte.next = put(outbits, outlen)
-                        put_adv(outbits, outlen)
-                        """
-
-                    if not no_adv:
-                        cur_cstatic.next = cur_cstatic + 1
-
-                elif state == d_state.SEARCH:
-
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    else:
-                        bdata = b1adler
-                        adv(8)
-                        outlen = codeLength[bdata]
-                        outbits = code_bits[bdata]
-                        # print("BITS:", bdata, outlen, outbits)
-                        oaddr.next = do
-                        obyte.next = put(outbits, outlen)
-                        put_adv(outbits, outlen)
-                        state.next = d_state.CSTATIC
-
-                elif state == d_state.STATIC:
-
-                    for i in range(0, 144):
-                        codeLength[i].next = 8
-                    for i in range(144, 256):
-                        codeLength[i].next = 9
-                    for i in range(256, 280):
-                        codeLength[i].next = 7
-                    for i in range(280, 288):
-                        codeLength[i].next = 8
-                    numCodeLength.next = 288
-                    cur_HF1.next = 0
-                    state.next = d_state.HF1
-
-                elif state == d_state.BL:
-
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif numLiterals == 0:
-                        numLiterals.next = 257 + get4(0, 5)
-                        print("NL:", 257 + get4(0, 5))
-                        numDistance.next = 1 + get4(5, 5)
-                        print("ND:", 1 + get4(5, 5))
-                        b_numCodeLength.next = 4 + get4(10, 4)
-                        print("NCL:", 4 + get4(10, 4))
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                else:
+                    if get4(0, 1):
+                        print("final")
+                        final.next = True
+                    i = get4(1, 2)
+                    method.next = i
+                    print("method: %d" % i)
+                    # print(di, dio, nb, b1, b2, b3, b4, i)
+                    if i == 2:
+                        state.next = d_state.BL
                         numCodeLength.next = 0
-                        adv(14)
+                        numLiterals.next = 0
+                        static.next = False
+                        adv(3)
+                    elif i == 1:
+                        static.next = True
+                        state.next = d_state.STATIC
+                        adv(3)
+                    elif i == 0:
+                        state.next = d_state.COPY
+                        skip = 8 - dio
+                        if skip <= 2:
+                            skip = 16 - dio
+                        i = get4(skip, 16)
+                        adv(skip + 16)
+                        length.next = i
+                        cur_i.next = 0
+                        offset.next = 7
                     else:
-                        if numCodeLength < CodeLengths:
-                            i = CodeLengthOrder[numCodeLength]
-                            # print("CLI: ", i)
-                            if numCodeLength < b_numCodeLength:
-                                codeLength[i].next = get4(0, 3)
-                                adv(3)
-                            else:
-                                # print("SKIP")
-                                codeLength[i].next = 0
-                            numCodeLength.next = numCodeLength + 1
-                        else:
-                            numCodeLength.next = CodeLengths
-                            cur_HF1.next = 0
-                            state.next = d_state.HF1
+                        print("Bad method")
+                        raise Error("Bad method")
 
-                elif state == d_state.READBL:
+            elif state == d_state.CSTATIC:
 
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif numCodeLength < numLiterals + numDistance:
-                        # print(numLiterals + numDistance, numCodeLength)
-                        i = 0
-                        if code < 16:
-                            howOften.next = 1
-                            lastToken.next = code
-                        elif code == 16:
-                            howOften.next = 3 + get4(0, 2)
-                            i = 2
-                        elif code == 17:
-                            howOften.next = 3 + get4(0, 3)
-                            lastToken.next = 0
-                            i = 3
-                        elif code == 18:
-                            howOften.next = 11 + get4(0, 7)
-                            lastToken.next = 0
-                            i = 7
-                        else:
-                            raise Error("Invalid data")
+                # print("CSTATIC", cur_i, ob1, do, doo, isize)
 
-                        # print(numCodeLength, howOften, code, di, i)
-                        if i != 0:
-                            adv(i)
-
-                        state.next = d_state.REPEAT
+                no_adv = 0
+                if not filled:
+                    no_adv = 1
+                    filled.next = True
+                elif nb < 4:
+                    no_adv = 1
+                    pass
+                elif cur_cstatic == 0:
+                    flush.next = False
+                    ob1.next = 0
+                    adler1.next = 1
+                    adler2.next = 0
+                    ladler1.next = 0
+                    oaddr.next = 0
+                    obyte.next = 0x78
+                elif cur_cstatic == 1:
+                    oaddr.next = 1
+                    obyte.next = 0x9c
+                    do.next = 2
+                elif cur_cstatic == 2:
+                    oaddr.next = do
+                    obyte.next = put(0x3, 3)
+                    put_adv(0x3, 3)
+                elif flush:
+                    # print(do, ob1)
+                    no_adv = 1
+                    oaddr.next = do
+                    obyte.next = ob1
+                    do_flush()
+                elif cur_cstatic - 3 > isize:
+                    if cur_cstatic - 3 == isize + 1:
+                        print("Put EOF")
+                        i = EndOfBlock
+                        outlen = codeLength[i]
+                        outbits = code_bits[i]
+                        print("EOF BITS:", i, outlen, outbits)
+                        oaddr.next = do
+                        obyte.next = put(outbits, outlen)
+                        put_adv(outbits, outlen)
+                    elif cur_cstatic - 3 == isize + 2:
+                        print("calc end adler")
+                        adler2.next = (adler2 + ladler1) % 65521
+                        if doo != 0:
+                            oaddr.next = do
+                            obyte.next = ob1
+                            do.next = do + 1
+                    elif cur_cstatic - 3 == isize + 3:
+                        print("c1")
+                        oaddr.next = do
+                        obyte.next = adler2 >> 8
+                        do.next = do + 1
+                    elif cur_cstatic - 3 == isize + 4:
+                        print("c2")
+                        oaddr.next = do
+                        obyte.next = adler2 & 0xFF
+                        do.next = do + 1
+                    elif cur_cstatic - 3 == isize + 5:
+                        print("c3")
+                        oaddr.next = do
+                        obyte.next = adler1 >> 8
+                        do.next = do + 1
+                    elif cur_cstatic - 3 == isize + 6:
+                        print("c4")
+                        oaddr.next = do
+                        obyte.next = adler1 & 0xFF
+                    elif cur_cstatic - 3 == isize + 7:
+                        print("EOF finish", do)
+                        o_done.next = True
+                        o_data.next = do + 1
+                        wait_data.next = True
+                        state.next = d_state.IDLE
                     else:
-                        print("FILL UP")
+                        print(cur_cstatic, isize)
+                        raise Error("???")
+                else:
+                    bdata = b1adler
+                    # adv(8)
+                    adler1_next = (adler1 + bdata) % 65521
+                    adler1.next = adler1_next
+                    adler2.next = (adler2 + ladler1) % 65521
+                    ladler1.next = adler1_next
+                    # print("in: ", bdata)
+                    state.next = d_state.SEARCH
+                    cur_search.next = 0
+                    """
+                    outlen = codeLength[bdata]
+                    outbits = code_bits[bdata]
+                    # print("BITS:", bdata, outlen, outbits)
+                    oaddr.next = do
+                    obyte.next = put(outbits, outlen)
+                    put_adv(outbits, outlen)
+                    """
 
-                        for i in range(32):
-                            dbl = 0
-                            if i + numLiterals < numCodeLength:
-                                dbl = int(codeLength[i + numLiterals])
-                            # print("dbl:", dbl)
-                            distanceLength[i].next = dbl
+                if not no_adv:
+                    cur_cstatic.next = cur_cstatic + 1
 
-                        # print(numCodeLength, numLiterals, MaxBitLength)
+            elif state == d_state.SEARCH:
 
-                        cur_i.next = numLiterals
-                        state.next = d_state.INIT3
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                else:
+                    bdata = b1adler
+                    adv(8)
+                    outlen = codeLength[bdata]
+                    outbits = code_bits[bdata]
+                    # print("BITS:", bdata, outlen, outbits)
+                    oaddr.next = do
+                    obyte.next = put(outbits, outlen)
+                    put_adv(outbits, outlen)
+                    state.next = d_state.CSTATIC
 
-                elif state == d_state.INIT3:
+            elif state == d_state.STATIC:
 
-                        if cur_i < MaxBitLength:
-                            codeLength[cur_i].next = 0
-                            cur_i.next = cur_i + 1
+                for i in range(0, 144):
+                    codeLength[i].next = 8
+                for i in range(144, 256):
+                    codeLength[i].next = 9
+                for i in range(256, 280):
+                    codeLength[i].next = 7
+                for i in range(280, 288):
+                    codeLength[i].next = 8
+                numCodeLength.next = 288
+                cur_HF1.next = 0
+                state.next = d_state.HF1
+
+            elif state == d_state.BL:
+
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                elif numLiterals == 0:
+                    numLiterals.next = 257 + get4(0, 5)
+                    print("NL:", 257 + get4(0, 5))
+                    numDistance.next = 1 + get4(5, 5)
+                    print("ND:", 1 + get4(5, 5))
+                    b_numCodeLength.next = 4 + get4(10, 4)
+                    print("NCL:", 4 + get4(10, 4))
+                    numCodeLength.next = 0
+                    adv(14)
+                else:
+                    if numCodeLength < CodeLengths:
+                        i = CodeLengthOrder[numCodeLength]
+                        # print("CLI: ", i)
+                        if numCodeLength < b_numCodeLength:
+                            codeLength[i].next = get4(0, 3)
+                            adv(3)
                         else:
-                            numCodeLength.next = MaxBitLength
-                            method.next = 3  # Start building bit tree
-                            cur_HF1.next = 0
-                            state.next = d_state.HF1
-
-                elif state == d_state.DISTTREE:
-
-                    print("DISTTREE")
-                    for i in range(32):
-                        codeLength[i].next = distanceLength[i]
-                        # print(i, distanceLength[i])
-                    numCodeLength.next = 32
-                    method.next = 4  # Start building dist tree
-                    # cur_i.next = 0
-                    cur_HF1.next = 0
-                    state.next = d_state.HF1
-
-                elif state == d_state.REPEAT:
-
-                    # print("HOWOFTEN: ", numCodeLength, howOften)
-                    if howOften != 0:
-                        codeLength[numCodeLength].next = lastToken
-                        howOften.next = howOften - 1
+                            # print("SKIP")
+                            codeLength[i].next = 0
                         numCodeLength.next = numCodeLength + 1
-                    elif numCodeLength < numLiterals + numDistance:
-                        cur_next.next = 0
+                    else:
+                        numCodeLength.next = CodeLengths
+                        cur_HF1.next = 0
+                        state.next = d_state.HF1
+
+            elif state == d_state.READBL:
+
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                elif numCodeLength < numLiterals + numDistance:
+                    # print(numLiterals + numDistance, numCodeLength)
+                    i = 0
+                    if code < 16:
+                        howOften.next = 1
+                        lastToken.next = code
+                    elif code == 16:
+                        howOften.next = 3 + get4(0, 2)
+                        i = 2
+                    elif code == 17:
+                        howOften.next = 3 + get4(0, 3)
+                        lastToken.next = 0
+                        i = 3
+                    elif code == 18:
+                        howOften.next = 11 + get4(0, 7)
+                        lastToken.next = 0
+                        i = 7
+                    else:
+                        raise Error("Invalid data")
+
+                    # print(numCodeLength, howOften, code, di, i)
+                    if i != 0:
+                        adv(i)
+
+                    state.next = d_state.REPEAT
+                else:
+                    print("FILL UP")
+
+                    for i in range(32):
+                        dbl = 0
+                        if i + numLiterals < numCodeLength:
+                            dbl = int(codeLength[i + numLiterals])
+                        # print("dbl:", dbl)
+                        distanceLength[i].next = dbl
+
+                    # print(numCodeLength, numLiterals, MaxBitLength)
+
+                    cur_i.next = numLiterals
+                    state.next = d_state.INIT3
+
+            elif state == d_state.INIT3:
+
+                    if cur_i < MaxBitLength:
+                        codeLength[cur_i].next = 0
+                        cur_i.next = cur_i + 1
+                    else:
+                        numCodeLength.next = MaxBitLength
+                        method.next = 3  # Start building bit tree
+                        cur_HF1.next = 0
+                        state.next = d_state.HF1
+
+            elif state == d_state.DISTTREE:
+
+                print("DISTTREE")
+                for i in range(32):
+                    codeLength[i].next = distanceLength[i]
+                    # print(i, distanceLength[i])
+                numCodeLength.next = 32
+                method.next = 4  # Start building dist tree
+                # cur_i.next = 0
+                cur_HF1.next = 0
+                state.next = d_state.HF1
+
+            elif state == d_state.REPEAT:
+
+                # print("HOWOFTEN: ", numCodeLength, howOften)
+                if howOften != 0:
+                    codeLength[numCodeLength].next = lastToken
+                    howOften.next = howOften - 1
+                    numCodeLength.next = numCodeLength + 1
+                elif numCodeLength < numLiterals + numDistance:
+                    cur_next.next = 0
+                    state.next = d_state.NEXT
+                else:
+                    state.next = d_state.READBL
+
+            elif state == d_state.HF1:
+
+                if cur_HF1 < len(bitLengthCount):
+                    bitLengthCount[cur_HF1].next = 0
+                if cur_HF1 < len(d_leaves):
+                    d_leaves[cur_HF1].next = 0
+                if method != 4 and cur_HF1 < len(leaves):
+                    leaves[cur_HF1].next = 0
+                limit = len(leaves)
+                if method == 4:
+                    limit = len(d_leaves)
+                if cur_HF1 < limit:
+                    cur_HF1.next = cur_HF1 + 1
+                else:
+                    print("DID HF1 INIT")
+                    cur_i.next = 0
+                    state.next = d_state.HF1INIT
+
+            elif state == d_state.HF1INIT:
+                # get frequencies of each bit length and ignore 0's
+
+                # print("HF1")
+                if cur_i < numCodeLength:
+                    j = codeLength[cur_i]
+                    bitLengthCount[j].next = bitLengthCount[j] + 1
+                    # print(cur_i, j, bitLengthCount[j] + 1)
+                    cur_i.next = cur_i + 1
+                else:
+                    bitLengthCount[0].next = 0
+                    state.next = d_state.HF2
+                    cur_i.next = 1
+                    if method == 4:
+                        d_maxBits.next = 0
+                    else:
+                        maxBits.next = 0
+                    minBits.next = MaxCodeLength
+
+            elif state == d_state.HF2:
+                # shortest and longest codes
+
+                # print("HF2")
+                if cur_i <= MaxCodeLength:
+                    if bitLengthCount[cur_i] != 0:
+                        if cur_i < minBits:
+                            minBits.next = cur_i
+                        if method == 4:
+                            if cur_i > d_maxBits:
+                                d_maxBits.next = cur_i
+                        else:
+                            if cur_i > maxBits:
+                                maxBits.next = cur_i
+                    cur_i.next = cur_i + 1
+                else:
+                    print(minBits, maxBits)
+                    t = InstantMaxBit
+                    if method == 4:
+                        if t > int(d_maxBits):
+                            t = int(d_maxBits)
+                        d_instantMaxBit.next = t
+                        d_instantMask.next = (1 << t) - 1
+                    else:
+                        if t > int(maxBits):
+                            t = int(maxBits)
+                        instantMaxBit.next = t
+                        instantMask.next = (1 << t) - 1
+                    print((1 << t) - 1)
+                    state.next = d_state.HF3
+                    cur_i.next = minBits
+                    code.next = 0
+                    for i in range(len(nextCode)):
+                        nextCode[i].next = 0
+                    print("to HF3")
+
+            elif state == d_state.HF3:
+                # find bit code for first element of each bitLength group
+
+                # print("HF3")
+                amb = maxBits
+                if method == 4:
+                    amb = d_maxBits
+                if cur_i <= amb:
+                    ncode = ((code + bitLengthCount[cur_i - 1]) << 1)
+                    code.next = ncode
+                    nextCode[cur_i].next = ncode
+                    # print(cur_i, ncode)
+                    cur_i.next = cur_i + 1
+                else:
+                    state.next = d_state.HF4
+                    cur_i.next = 0
+                    spread_i.next = 0
+                    HF4_init.next = 0
+                    print("to HF4")
+
+            elif state == d_state.HF4:
+                # create binary codes for each literal
+
+                if spread_i < numCodeLength:
+                    bits = codeLength[spread_i]
+                    if bits != 0:
+                        if HF4_init == 0:
+                            canonical = nextCode[bits]
+                            nextCode[bits].next = nextCode[bits] + 1
+                            if bits > MaxCodeLength:
+                                raise Error("too many bits: %d" % bits)
+                            # print(canonical, bits)
+                            reverse.next = rev_bits(canonical, bits)
+                            # print("LEAF: ", spread_i, bits, reverse, canonical)
+                            leaf.next = makeLeaf(spread_i, bits)
+                            HF4_init.next = 1
+                        elif method == 4:
+                            d_leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
+                            if bits <= d_instantMaxBit:
+                                if reverse + (1 << bits) <= d_instantMask:
+                                    step.next = 1 << bits
+                                    spread.next = reverse + (1 << bits)
+                                    state.next = d_state.SPREAD
+                                else:
+                                    spread_i.next = spread_i + 1
+                            else:
+                                spread_i.next = spread_i + 1
+                            HF4_init.next = 0
+                        else:
+                            leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
+                            code_bits[spread_i].next = reverse
+                            if bits <= instantMaxBit:
+                                if reverse + (1 << bits) <= instantMask:
+                                    step.next = 1 << bits
+                                    spread.next = reverse + (1 << bits)
+                                    state.next = d_state.SPREAD
+                                else:
+                                    spread_i.next = spread_i + 1
+                            else:
+                                spread_i.next = spread_i + 1
+                            HF4_init.next = 0
+                    else:
+                        spread_i.next = spread_i + 1
+                else:
+                    if do_compress:
+                        state.next = d_state.CSTATIC
+                        cur_cstatic.next = 0
+                    elif method == 3:
+                        state.next = d_state.DISTTREE
+                    elif method == 4:
+                        print("DEFLATE m2!")
+                        state.next = d_state.NEXT
+                    elif method == 2:
+                        numCodeLength.next = 0
                         state.next = d_state.NEXT
                     else:
-                        state.next = d_state.READBL
+                        state.next = d_state.NEXT
+                    cur_next.next = 0
+                    cur_i.next = 0
 
-                elif state == d_state.HF1:
+            elif state == d_state.SPREAD:
 
-                    if cur_HF1 < len(bitLengthCount):
-                        bitLengthCount[cur_HF1].next = 0
-                    if cur_HF1 < len(d_leaves):
-                        d_leaves[cur_HF1].next = 0
-                    if method != 4 and cur_HF1 < len(leaves):
-                        leaves[cur_HF1].next = 0
-                    limit = len(leaves)
-                    if method == 4:
-                        limit = len(d_leaves)
-                    if cur_HF1 < limit:
-                        cur_HF1.next = cur_HF1 + 1
+                if method == 4:
+                    # print(spread, spread_i)
+                    d_leaves[spread].next = makeLeaf(
+                        spread_i, codeLength[spread_i])
+                else:
+                    leaves[spread].next = makeLeaf(
+                        spread_i, codeLength[spread_i])
+                # print("SPREAD:", spread, step, instantMask)
+                aim = instantMask
+                if method == 4:
+                    aim = d_instantMask
+                if spread > aim - step:
+                    spread_i.next = spread_i + 1
+                    state.next = d_state.HF4
+                else:
+                    spread.next = spread + step
+
+            elif state == d_state.NEXT:
+
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                elif cur_next == 0:
+                    # print("INIT:", di, dio, instantMaxBit, maxBits)
+                    if instantMaxBit <= maxBits:
+                        cto = get4(0, maxBits)
+                        cur_next.next = instantMaxBit
+                        mask = (1 << instantMaxBit) - 1
+                        leaf.next = leaves[cto & mask]
+                        # print(cur_next, mask, leaf, maxBits)
                     else:
-                        print("DID HF1 INIT")
+                        print("FAIL instantMaxBit <= maxBits")
+                        raise Error("FAIL instantMaxBit <= maxBits")
+                elif cur_next <= maxBits:
+                    # print("NEXT:", cur_next)
+                    if get_bits(leaf) <= cur_next:
+                        if get_bits(leaf) < 1:
+                            print("< 1 bits: ")
+                            raise Error("< 1 bits: ")
+                        adv(get_bits(leaf))
+                        if get_code(leaf) == 0:
+                            print("leaf 0")
+                        code.next = get_code(leaf)
+                        # print("ADV:", di, get_bits(leaf), get_code(leaf))
+                        if method == 2:
+                            state.next = d_state.READBL
+                        else:
+                            state.next = d_state.INFLATE
+                    else:
+                        print("FAIL get_bits(leaf) <= cur_next")
+                        raise Error("?")
+                else:
+                    print("no next token")
+                    raise Error("no next token")
+
+            elif state == d_state.D_NEXT:
+
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                elif cur_next == 0:
+                    # print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
+                    if d_instantMaxBit <= d_maxBits:
+                        token = code - 257
+                        # print("token: ", token)
+                        extraLength = ExtraLengthBits[token]
+                        # print("extra length bits:", extraLength)
+                        cto = get4(extraLength, d_maxBits)
+                        cur_next.next = d_instantMaxBit
+                        mask = (1 << d_instantMaxBit) - 1
+                        leaf.next = d_leaves[cto & mask]
+                        # print(cur_next, mask, leaf, d_maxBits)
+                    else:
+                        raise Error("???")
+
+                elif cur_next <= d_maxBits:
+                    if get_bits(leaf) <= cur_next:
+                        if get_bits(leaf) == 0:
+                            raise Error("0 bits")
+                        token = code - 257
+                        # print("E2:", token, leaf)
+                        tlength = CopyLength[token]
+                        # print("tlength:", tlength)
+                        extraLength = ExtraLengthBits[token]
+                        # print("extra length bits:", extraLength)
+                        tlength += get4(0, extraLength)
+                        # print("extra length:", tlength)
+                        distanceCode = get_code(leaf)
+                        # print("distance code:", distanceCode)
+                        distance = CopyDistance[distanceCode]
+                        # print("distance:", distance)
+                        moreBits = ExtraDistanceBits[distanceCode >> 1]
+                        # print("more bits:", moreBits)
+                        # print("bits:", get_bits(leaf))
+                        mored = get4(extraLength + get_bits(leaf), moreBits)
+                        # print("mored:", mored)
+                        distance += mored
+                        # print("distance more:", distance)
+                        adv(moreBits + extraLength + get_bits(leaf))
+                        # print("offset:", do - distance)
+                        # print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
+                        offset.next = do - distance
+                        length.next = tlength
+                        # cur_next.next = 0
+                        first.next = True
                         cur_i.next = 0
-                        state.next = d_state.HF1INIT
+                        state.next = d_state.COPY
 
-                elif state == d_state.HF1INIT:
-                    # get frequencies of each bit length and ignore 0's
-
-                    # print("HF1")
-                    if cur_i < numCodeLength:
-                        j = codeLength[cur_i]
-                        bitLengthCount[j].next = bitLengthCount[j] + 1
-                        # print(cur_i, j, bitLengthCount[j] + 1)
-                        cur_i.next = cur_i + 1
                     else:
-                        bitLengthCount[0].next = 0
-                        state.next = d_state.HF2
-                        cur_i.next = 1
-                        if method == 4:
-                            d_maxBits.next = 0
-                        else:
-                            maxBits.next = 0
-                        minBits.next = MaxCodeLength
+                        raise Error("?")
+                else:
+                    raise Error("no next token")
 
-                elif state == d_state.HF2:
-                    # shortest and longest codes
-
-                    # print("HF2")
-                    if cur_i <= MaxCodeLength:
-                        if bitLengthCount[cur_i] != 0:
-                            if cur_i < minBits:
-                                minBits.next = cur_i
-                            if method == 4:
-                                if cur_i > d_maxBits:
-                                    d_maxBits.next = cur_i
-                            else:
-                                if cur_i > maxBits:
-                                    maxBits.next = cur_i
-                        cur_i.next = cur_i + 1
-                    else:
-                        print(minBits, maxBits)
-                        t = InstantMaxBit
-                        if method == 4:
-                            if t > int(d_maxBits):
-                                t = int(d_maxBits)
-                            d_instantMaxBit.next = t
-                            d_instantMask.next = (1 << t) - 1
-                        else:
-                            if t > int(maxBits):
-                                t = int(maxBits)
-                            instantMaxBit.next = t
-                            instantMask.next = (1 << t) - 1
-                        print((1 << t) - 1)
-                        state.next = d_state.HF3
-                        cur_i.next = minBits
-                        code.next = 0
-                        for i in range(len(nextCode)):
-                            nextCode[i].next = 0
-                        print("to HF3")
-
-                elif state == d_state.HF3:
-                    # find bit code for first element of each bitLength group
-
-                    # print("HF3")
-                    amb = maxBits
-                    if method == 4:
-                        amb = d_maxBits
-                    if cur_i <= amb:
-                        ncode = ((code + bitLengthCount[cur_i - 1]) << 1)
-                        code.next = ncode
-                        nextCode[cur_i].next = ncode
-                        # print(cur_i, ncode)
-                        cur_i.next = cur_i + 1
-                    else:
-                        state.next = d_state.HF4
-                        cur_i.next = 0
-                        spread_i.next = 0
-                        HF4_init.next = 0
-                        print("to HF4")
-
-                elif state == d_state.HF4:
-                    # create binary codes for each literal
-
-                    if spread_i < numCodeLength:
-                        bits = codeLength[spread_i]
-                        if bits != 0:
-                            if HF4_init == 0:
-                                canonical = nextCode[bits]
-                                nextCode[bits].next = nextCode[bits] + 1
-                                if bits > MaxCodeLength:
-                                    raise Error("too many bits: %d" % bits)
-                                # print(canonical, bits)
-                                reverse.next = rev_bits(canonical, bits)
-                                # print("LEAF: ", spread_i, bits, reverse, canonical)
-                                leaf.next = makeLeaf(spread_i, bits)
-                                HF4_init.next = 1
-                            elif method == 4:
-                                d_leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
-                                if bits <= d_instantMaxBit:
-                                    if reverse + (1 << bits) <= d_instantMask:
-                                        step.next = 1 << bits
-                                        spread.next = reverse + (1 << bits)
-                                        state.next = d_state.SPREAD
-                                    else:
-                                        spread_i.next = spread_i + 1
-                                else:
-                                    spread_i.next = spread_i + 1
-                                HF4_init.next = 0
-                            else:
-                                leaves[reverse].next = leaf # makeLeaf(spread_i, bits)
-                                code_bits[spread_i].next = reverse
-                                if bits <= instantMaxBit:
-                                    if reverse + (1 << bits) <= instantMask:
-                                        step.next = 1 << bits
-                                        spread.next = reverse + (1 << bits)
-                                        state.next = d_state.SPREAD
-                                    else:
-                                        spread_i.next = spread_i + 1
-                                else:
-                                    spread_i.next = spread_i + 1
-                                HF4_init.next = 0
-                        else:
-                            spread_i.next = spread_i + 1
-                    else:
-                        if do_compress:
-                            state.next = d_state.CSTATIC
-                            cur_cstatic.next = 0
-                        elif method == 3:
-                            state.next = d_state.DISTTREE
-                        elif method == 4:
-                            print("DEFLATE m2!")
-                            state.next = d_state.NEXT
-                        elif method == 2:
-                            numCodeLength.next = 0
-                            state.next = d_state.NEXT
-                        else:
-                            state.next = d_state.NEXT
-                        cur_next.next = 0
-                        cur_i.next = 0
-
-                elif state == d_state.SPREAD:
-
-                    if method == 4:
-                        # print(spread, spread_i)
-                        d_leaves[spread].next = makeLeaf(
-                            spread_i, codeLength[spread_i])
-                    else:
-                        leaves[spread].next = makeLeaf(
-                            spread_i, codeLength[spread_i])
-                    # print("SPREAD:", spread, step, instantMask)
-                    aim = instantMask
-                    if method == 4:
-                        aim = d_instantMask
-                    if spread > aim - step:
-                        spread_i.next = spread_i + 1
-                        state.next = d_state.HF4
-                    else:
-                        spread.next = spread + step
-
-                elif state == d_state.NEXT:
+            elif state == d_state.INFLATE:
 
                     if not filled:
                         filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif cur_next == 0:
-                        # print("INIT:", di, dio, instantMaxBit, maxBits)
-                        if instantMaxBit <= maxBits:
-                            cto = get4(0, maxBits)
-                            cur_next.next = instantMaxBit
-                            mask = (1 << instantMaxBit) - 1
-                            leaf.next = leaves[cto & mask]
-                            # print(cur_next, mask, leaf, maxBits)
-                        else:
-                            print("FAIL instantMaxBit <= maxBits")
-                            raise Error("FAIL instantMaxBit <= maxBits")
-                    elif cur_next <= maxBits:
-                        # print("NEXT:", cur_next)
-                        if get_bits(leaf) <= cur_next:
-                            if get_bits(leaf) < 1:
-                                print("< 1 bits: ")
-                                raise Error("< 1 bits: ")
-                            adv(get_bits(leaf))
-                            if get_code(leaf) == 0:
-                                print("leaf 0")
-                            code.next = get_code(leaf)
-                            # print("ADV:", di, get_bits(leaf), get_code(leaf))
-                            if method == 2:
-                                state.next = d_state.READBL
-                            else:
-                                state.next = d_state.INFLATE
-                        else:
-                            print("FAIL get_bits(leaf) <= cur_next")
-                            raise Error("?")
-                    else:
-                        print("no next token")
-                        raise Error("no next token")
-
-                elif state == d_state.D_NEXT:
-
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif cur_next == 0:
-                        # print("D_INIT:", di, dio, d_instantMaxBit, d_maxBits)
-                        if d_instantMaxBit <= d_maxBits:
-                            token = code - 257
-                            # print("token: ", token)
-                            extraLength = ExtraLengthBits[token]
-                            # print("extra length bits:", extraLength)
-                            cto = get4(extraLength, d_maxBits)
-                            cur_next.next = d_instantMaxBit
-                            mask = (1 << d_instantMaxBit) - 1
-                            leaf.next = d_leaves[cto & mask]
-                            # print(cur_next, mask, leaf, d_maxBits)
-                        else:
-                            raise Error("???")
-
-                    elif cur_next <= d_maxBits:
-                        if get_bits(leaf) <= cur_next:
-                            if get_bits(leaf) == 0:
-                                raise Error("0 bits")
-                            token = code - 257
-                            # print("E2:", token, leaf)
-                            tlength = CopyLength[token]
-                            # print("tlength:", tlength)
-                            extraLength = ExtraLengthBits[token]
-                            # print("extra length bits:", extraLength)
-                            tlength += get4(0, extraLength)
-                            # print("extra length:", tlength)
-                            distanceCode = get_code(leaf)
-                            # print("distance code:", distanceCode)
-                            distance = CopyDistance[distanceCode]
-                            # print("distance:", distance)
-                            moreBits = ExtraDistanceBits[distanceCode >> 1]
-                            # print("more bits:", moreBits)
-                            # print("bits:", get_bits(leaf))
-                            mored = get4(extraLength + get_bits(leaf), moreBits)
-                            # print("mored:", mored)
-                            distance += mored
-                            # print("distance more:", distance)
-                            adv(moreBits + extraLength + get_bits(leaf))
-                            # print("offset:", do - distance)
-                            # print("FAIL?: ", di, dio, do, b1, b2, b3, b4)
-                            offset.next = do - distance
-                            length.next = tlength
-                            # cur_next.next = 0
-                            first.next = True
-                            cur_i.next = 0
-                            state.next = d_state.COPY
-
-                        else:
-                            raise Error("?")
-                    else:
-                        raise Error("no next token")
-
-                elif state == d_state.INFLATE:
-
-                        if not filled:
-                            filled.next = True
-                        elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
-                            # print("EXTRA FETCH", nb, dio)
-                            pass  # fetch more bytes
-                        elif di > isize - 3:  # checksum is 4 bytes
-                            state.next = d_state.IDLE
-                            o_done.next = True
-                            wait_data.next = True
-                            print("NO EOF ", di)
-                            raise Error("NO EOF!")
-                        elif code == EndOfBlock:
-                            print("EOF:", di, do)
-                            if not final:
-                                state.next = d_state.HEADER
-                            else:
-                                o_done.next = True
-                                wait_data.next = True
-                                state.next = d_state.IDLE
-                        else:
-                            if code < EndOfBlock:
-                                # print("B:", code, di, do)
-                                oaddr.next = do
-                                obyte.next = code
-                                o_data.next = do + 1
-                                do.next = do + 1
-                                cur_next.next = 0
-                                state.next = d_state.NEXT
-                                # raise Error("DF!")
-                            elif code == InvalidToken:
-                                raise Error("invalid token")
-                            else:
-                                if static:
-                                    token = code - 257
-                                    # print("E:", token)
-                                    tlength = CopyLength[token]
-                                    extraLength = ExtraLengthBits[token]
-                                    tlength += get4(0, extraLength)
-                                    t = get4(extraLength, 5)
-                                    distanceCode = rev_bits(t, 5)
-                                    distance = CopyDistance[distanceCode]
-                                    moreBits = ExtraDistanceBits[distanceCode
-                                                                 >> 1]
-                                    distance += get4(extraLength + 5, moreBits)
-                                    adv(extraLength + 5 + moreBits)
-                                    offset.next = do - distance
-                                    length.next = tlength
-                                    first.next = True
-                                    cur_i.next = 0
-                                    state.next = d_state.COPY
-                                else:
-                                    # raise Error("TO DO")
-                                    state.next = d_state.D_NEXT
-                            cur_next.next = 0
-
-                elif state == d_state.COPY:
-
-                    if not filled:
-                        filled.next = True
-                    elif nb < 4:
-                        pass
-                    elif method == 0:
-                        if cur_i < length:
-                            oaddr.next = do
-                            obyte.next = b3
-                            adv(8)
-                            cur_i.next = cur_i + 1
-                            do.next = do + 1
-                            o_data.next = do + 1
-                        elif not final:
+                    elif nb < 4:  # nb <= 2 or (nb == 3 and dio > 1):
+                        # print("EXTRA FETCH", nb, dio)
+                        pass  # fetch more bytes
+                    elif di > isize - 3:  # checksum is 4 bytes
+                        state.next = d_state.IDLE
+                        o_done.next = True
+                        wait_data.next = True
+                        print("NO EOF ", di)
+                        raise Error("NO EOF!")
+                    elif code == EndOfBlock:
+                        print("EOF:", di, do)
+                        if not final:
                             state.next = d_state.HEADER
                         else:
                             o_done.next = True
                             wait_data.next = True
                             state.next = d_state.IDLE
-                    elif cur_i < length + 1:
-                        oraddr.next = offset + cur_i
-                        cur_i.next = cur_i + 1
-                        if cur_i > 1:
-                            # print("byte", orbyte)
+                    else:
+                        if code < EndOfBlock:
+                            # print("B:", code, di, do)
                             oaddr.next = do
-                            obyte.next = orbyte
+                            obyte.next = code
                             o_data.next = do + 1
                             do.next = do + 1
-                    else:
+                            cur_next.next = 0
+                            state.next = d_state.NEXT
+                            # raise Error("DF!")
+                        elif code == InvalidToken:
+                            raise Error("invalid token")
+                        else:
+                            if static:
+                                token = code - 257
+                                # print("E:", token)
+                                tlength = CopyLength[token]
+                                extraLength = ExtraLengthBits[token]
+                                tlength += get4(0, extraLength)
+                                t = get4(extraLength, 5)
+                                distanceCode = rev_bits(t, 5)
+                                distance = CopyDistance[distanceCode]
+                                moreBits = ExtraDistanceBits[distanceCode
+                                                                >> 1]
+                                distance += get4(extraLength + 5, moreBits)
+                                adv(extraLength + 5 + moreBits)
+                                offset.next = do - distance
+                                length.next = tlength
+                                first.next = True
+                                cur_i.next = 0
+                                state.next = d_state.COPY
+                            else:
+                                # raise Error("TO DO")
+                                state.next = d_state.D_NEXT
+                        cur_next.next = 0
+
+            elif state == d_state.COPY:
+
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
+                elif method == 0:
+                    if cur_i < length:
                         oaddr.next = do
-                        obyte.next = orbyte
+                        obyte.next = b3
+                        adv(8)
+                        cur_i.next = cur_i + 1
                         do.next = do + 1
                         o_data.next = do + 1
-                        cur_next.next = 0
-                        state.next = d_state.NEXT
-
-            elif i_mode == WRITE:
-
-                # print("WRITE:", i_addr, i_data)
-                iram[i_addr].next = i_data
-                isize.next = i_addr
-                wait_data.next = True
-
-            elif i_mode == READ:
-
-                # o_data.next = oram[i_addr]
-                oraddr.next = i_addr
-                o_data.next = orbyte
-
-            elif i_mode == STARTC:
-
-                print("STARTC")
-                do_compress.next = True
-                method.next = 1
-                o_done.next = False
-                di.next = 0
-                dio.next = 0
-                do.next = 0
-                doo.next = 0
-                filled.next = True
-                wait_data.next = False
-                state.next = d_state.STATIC
-
-            elif i_mode == STARTD:
-
-                do_compress.next = False
-                o_done.next = False
-                di.next = 2
-                dio.next = 0
-                do.next = 0
-                doo.next = 0
-                filled.next = True
-                wait_data.next = False
-                state.next = d_state.HEADER
+                    elif not final:
+                        state.next = d_state.HEADER
+                    else:
+                        o_done.next = True
+                        wait_data.next = True
+                        state.next = d_state.IDLE
+                elif cur_i < length + 1:
+                    oraddr.next = offset + cur_i
+                    cur_i.next = cur_i + 1
+                    if cur_i > 1:
+                        # print("byte", orbyte)
+                        oaddr.next = do
+                        obyte.next = orbyte
+                        o_data.next = do + 1
+                        do.next = do + 1
+                else:
+                    oaddr.next = do
+                    obyte.next = orbyte
+                    do.next = do + 1
+                    o_data.next = do + 1
+                    cur_next.next = 0
+                    state.next = d_state.NEXT
 
     return logic, fill_buf, oramwrite, oramread
 
