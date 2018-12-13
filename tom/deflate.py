@@ -13,7 +13,7 @@ from https://create.stephan-brumme.com/deflate-decoder
 from math import log2
 
 from myhdl import always, block, Signal, intbv, Error, ResetSignal, \
-    enum, always_seq, always_comb, concat, ConcatSignal
+    enum, always_seq, always_comb, concat, ConcatSignal, modbv
 
 IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 
@@ -28,7 +28,7 @@ else:
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT',
                'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC',
-               'SEARCH', encoding='one_hot')
+               'SEARCH', 'DISTANCE') # , encoding='one_hot')
 
 CodeLengthOrder = (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14,
                    1, 15)
@@ -120,7 +120,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
     spread_i = Signal(intbv()[9:])
     cur_HF1 = Signal(intbv()[10:])
     cur_cstatic = Signal(intbv()[LBSIZE:])
-    cur_search = Signal(intbv()[5:])
+    cur_search = Signal(intbv(min=-256,max=IBSIZE))
     cur_next = Signal(intbv()[5:])
 
     length = Signal(intbv()[LBSIZE:])
@@ -503,18 +503,27 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                     ladler1.next = adler1_next
                     # print("in: ", bdata, di, isize)
                     state.next = d_state.SEARCH
-                    cur_search.next = 0
-                    """
-                    outlen = codeLength[bdata]
-                    outbits = code_bits[bdata]
-                    # print("BITS:", bdata, outlen, outbits)
-                    oaddr.next = do
-                    obyte.next = put(outbits, outlen)
-                    put_adv(outbits, outlen)
-                    """
+                    cur_search.next = di - 3
 
                 if not no_adv:
                     cur_cstatic.next = cur_cstatic + 1
+
+            elif state == d_state.DISTANCE:
+
+                print("DISTANCE", cur_i, cur_search)
+                if CopyDistance[cur_i+1] > cur_search:
+                    print("Found distance", cur_i)
+                    extra_dist = cur_search - CopyDistance[cur_i]
+                    print("extra dist", extra_dist)
+                    extra_bits = ExtraDistanceBits[cur_i/2]
+                    print("extra bits", extra_bits)
+                    outcode = reverse(cur_i, 5)
+                    put(cur_i, 5)
+                    put(extra_dist, extra_bits)
+                    put_adv(5 + extra_bits)
+
+                raise Error("To Do")
+                state.next = d_state.CSTATIC
 
             elif state == d_state.SEARCH:
 
@@ -523,15 +532,40 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                 elif nb < 4:
                     pass
                 else:
-                    bdata = b1adler
-                    adv(8)
-                    outlen = codeLength[bdata]
-                    outbits = code_bits[bdata]
-                    # print("BITS:", bdata, outlen, outbits)
-                    oaddr.next = do
-                    obyte.next = put(outbits, outlen)
-                    put_adv(outbits, outlen)
-                    state.next = d_state.CSTATIC
+                    if cur_search >= 0 and di > 3:
+                        if iram[cur_search] == b1 and \
+                                iram[cur_search+1] == b2 and \
+                                iram[cur_search+2] == b3 and \
+                                iram[cur_search+3] == b4:
+                            print("found:", cur_search, di)
+                            # Length is 3 code
+                            bdata = 257
+                            adv(8)
+                            outlen = codeLength[bdata]
+                            outbits = code_bits[bdata]
+                            print("BITS:", bdata, outlen, outbits)
+                            oaddr.next = do
+                            obyte.next = put(outbits, outlen)
+                            put_adv(outbits, outlen)
+
+                            distance = do - cur_search
+                            print("distance", distance)
+                            cur_search.next = distance
+                            cur_i.next = 0
+
+                            state.next = d_state.DISTANCE
+                        else:
+                            cur_search.next = cur_search - 1
+                    else:
+                        bdata = b1adler
+                        adv(8)
+                        outlen = codeLength[bdata]
+                        outbits = code_bits[bdata]
+                        # print("BITS:", bdata, outlen, outbits)
+                        oaddr.next = do
+                        obyte.next = put(outbits, outlen)
+                        put_adv(outbits, outlen)
+                        state.next = d_state.CSTATIC
 
             elif state == d_state.STATIC:
 
