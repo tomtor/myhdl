@@ -48,7 +48,7 @@ ExtraDistanceBits = (0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 
 
 @block
-def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
+def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
 
     """ Deflate (de)compress
 
@@ -261,7 +261,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
             ob1.next = ob1 | (d << doo)
             # print("ob1.next", ob1 | (d << doo))
         do.next = do + pshift
-        o_data.next = do + pshift
+        o_progress.next = do + pshift
         doo_next = (doo + width) & 0x7
         if doo_next == 0:
             flush.next = True
@@ -271,7 +271,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         # print("FLUSH")
         flush.next = False
         ob1.next = 0
-        o_data.next = do + 1
+        o_progress.next = do + 1
         do.next = do + 1
 
     def rev_bits(b, nb):
@@ -303,6 +303,26 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
         return (aleaf >> BITBITS)  # & ((1 << CODEBITS) - 1)
 
     @always(clk.posedge)
+    def io_logic():
+
+                if i_mode == WRITE:
+
+                    # print("WRITE:", i_addr, i_data)
+                    iram[i_addr].next = i_data
+                    isize.next = i_addr
+                    # wait_data.next = True
+
+                elif i_mode == READ:
+
+                    # o_data.next = oram[i_addr]
+                    # oraddr.next = i_addr
+                    o_byte.next = oram[i_addr]
+
+                else:
+                    pass
+
+
+    @always_seq(clk.posedge, reset)
     def logic():
         if not reset:
             print("DEFLATE RESET")
@@ -318,20 +338,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                 wait_data.next = True
                 ocopy.next = False
 
-                if i_mode == WRITE:
-
-                    # print("WRITE:", i_addr, i_data)
-                    iram[i_addr].next = i_data
-                    isize.next = i_addr
-                    wait_data.next = True
-
-                elif i_mode == READ:
-
-                    # o_data.next = oram[i_addr]
-                    oraddr.next = i_addr
-                    o_data.next = orbyte
-
-                elif i_mode == STARTC:
+                if i_mode == STARTC:
 
                     print("STARTC")
                     do_compress.next = True
@@ -349,7 +356,8 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
                     do_compress.next = False
                     o_done.next = False
-                    di.next = 2
+                    #di.next = 2
+                    di.next = 0
                     dio.next = 0
                     do.next = 0
                     doo.next = 0
@@ -360,24 +368,23 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
 
             elif state == d_state.HEADER:
 
-                """
+                if not filled:
+                    filled.next = True
+                elif nb < 4:
+                    pass
                 # Read block header
-                if di == 0:
+                elif di == 0:
                     print(iram[di])
                     if iram[di] == 0x78:
                         print("deflate mode")
                     else:
                         raise Error("unexpected mode")
+                    adv(8)
                 elif di == 1:
                     print(iram[di])
                     if iram[di] != 0x9c:
                         raise Error("unexpected level")
-                """
-
-                if not filled:
-                    filled.next = True
-                elif nb < 4:
-                    pass
+                    adv(8)
                 else:
                     if get4(0, 1):
                         print("final")
@@ -482,7 +489,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                     elif cur_cstatic - 3 == isize + 7:
                         print("EOF finish", do)
                         o_done.next = True
-                        o_data.next = do + 1
+                        o_progress.next = do + 1
                         wait_data.next = True
                         state.next = d_state.IDLE
                     else:
@@ -950,7 +957,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                             # print("B:", code, di, do)
                             oaddr.next = do
                             obyte.next = code
-                            o_data.next = do + 1
+                            o_progress.next = do + 1
                             do.next = do + 1
                             cur_next.next = 0
                             state.next = d_state.NEXT
@@ -994,7 +1001,7 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         adv(8)
                         cur_i.next = cur_i + 1
                         do.next = do + 1
-                        o_data.next = do + 1
+                        o_progress.next = do + 1
                     elif not final:
                         state.next = d_state.HEADER
                     else:
@@ -1008,22 +1015,27 @@ def deflate(i_mode, o_done, i_data, o_data, i_addr, clk, reset):
                         # print("byte", orbyte)
                         oaddr.next = do
                         obyte.next = orbyte
-                        o_data.next = do + 1
+                        o_progress.next = do + 1
                         do.next = do + 1
                 else:
                     oaddr.next = do
                     obyte.next = orbyte
                     do.next = do + 1
-                    o_data.next = do + 1
+                    o_progress.next = do + 1
                     cur_next.next = 0
                     state.next = d_state.NEXT
 
-    return logic, fill_buf, oramwrite, oramread
+            else:
+
+                print("unknow state?!")
+                state.next = d_state.IDLE
+
+    return io_logic, logic, fill_buf, oramwrite, oramread
 
 
 if __name__ == "__main__":
     d = deflate(Signal(intbv()[3:]), Signal(bool(0)),
                 Signal(intbv()[8:]), Signal(intbv()[LBSIZE:]),
-                Signal(intbv()[LBSIZE:]),
+                Signal(intbv()[8:]), Signal(intbv()[LBSIZE:]),
                 Signal(bool(0)), ResetSignal(1, 0, True))
     d.convert()
