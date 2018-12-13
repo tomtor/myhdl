@@ -268,6 +268,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
     tstate = Signal(tb_state.RESET)
 
     tbi = Signal(modbv(0)[15:])
+    ud = Signal(intbv()[8:])
 
     scounter = Signal(modbv(0)[SLOWDOWN:])
     counter = Signal(modbv(0)[16:])
@@ -347,33 +348,30 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 resultlen.next = o_progress
                 tstate.next = tb_state.VERIFY
                 tbi.next = 0
+                i_addr.next = 0
                 i_mode.next = READ
-                wtick.next = True
 
         elif tstate == tb_state.VERIFY:
             #print("VERIFY", o_data)
             led1_b.next = 1
-            if wtick:
-                wtick.next = False
-            elif tbi < len(UDATA)+1:
+            if tbi < len(UDATA)+1:
                 led1_b.next = 0
                 if scounter == 0:
                     led2_r.next = not led2_r
                 if tbi > 0:
                     # print(o_data)
                     d_data[tbi-1].next = o_byte
-                    vud = UDATA[tbi-1]
-                    if o_byte != vud:
+                    rud = UDATA[tbi-1]
+                    if o_byte != rud:
                         tstate.next = tb_state.RESET
                         i_mode.next = IDLE
-                        print("FAIL", len(UDATA), tbi, o_byte)
+                        print("FAIL", len(UDATA), tbi, o_byte, rud)
                         tstate.next = tb_state.FAIL
                         raise Error("bad result")
                     else:
                         pass
                         # print(tbi, o_data)
-                i_addr.next = tbi
-                wtick.next = True
+                i_addr.next = tbi + 1
                 tbi.next = tbi + 1
             else:
                 print(len(UDATA))
@@ -497,11 +495,11 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                     led2_r.next = not led2_r
                 # print(tbi, o_data)
                 d_data[tbi].next = o_byte
-                ud = UDATA[tbi]
-                if o_byte != ud:
+                cud = UDATA[tbi]
+                if o_byte != cud:
                     tstate.next = tb_state.RESET
                     i_mode.next = IDLE
-                    print("FAIL", len(UDATA), tbi, ud, o_byte)
+                    print("FAIL", len(UDATA), tbi, cud, o_byte)
                     tstate.next = tb_state.FAIL
                     raise Error("bad result")
                 tbi.next = tbi + 1
@@ -511,6 +509,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
                 print(len(UDATA))
                 print("ALL OK!", tbi)
                 led0_g.next = not led0_g
+                led2_r.next = 0
                 i_mode.next = IDLE
                 tstate.next = tb_state.CPAUSE
                 resume.next = 1
@@ -535,7 +534,7 @@ def test_deflate_bench(i_clk, o_led, led0_g, led1_b, led2_r):
         return dut, count, logic
 
 
-if 1: # not COSIMULATION:
+if 0: # not COSIMULATION:
     SLOWDOWN = 18 # 24
 
     tb = test_deflate_bench(Signal(bool(0)), Signal(intbv(0)[4:]),
