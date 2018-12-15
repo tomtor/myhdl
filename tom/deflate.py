@@ -160,7 +160,6 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
     adler2 = Signal(intbv()[16:])
     ladler1 = Signal(intbv()[16:])
 
-
     @always(clk.posedge)
     def oramwrite():
         oram[oaddr].next = obyte
@@ -512,13 +511,12 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         raise Error("???")
                 else:
                     bdata = b1adler
-                    # adv(8)
                     # Fix this when > 1 byte output:
                     adler1_next = (adler1 + bdata) % 65521
                     adler1.next = adler1_next
                     adler2.next = (adler2 + ladler1) % 65521
                     ladler1.next = adler1_next
-                    # print("in: ", bdata, di, isize)
+                    print("1: ", bdata, di, isize)
                     state.next = d_state.SEARCH
                     cur_search.next = di - 3
 
@@ -1081,6 +1079,11 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         obyte.next = orbyte
                         o_progress.next = do + 1
                         do.next = do + 1
+                        print("cs", orbyte)
+                        adler1_next = (adler1 + orbyte) % 65521
+                        adler1.next = adler1_next
+                        adler2.next = (adler2 + ladler1) % 65521
+                        ladler1.next = adler1_next
                 else:
                     oaddr.next = do
                     obyte.next = orbyte
@@ -1089,6 +1092,11 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                     cur_next.next = 0
                     state.next = d_state.NEXT
 
+                    print("csl", orbyte)
+                    adler1_next = (adler1 + orbyte) % 65521
+                    adler1.next = adler1_next
+                    adler2.next = (adler2 + ladler1) % 65521
+                    ladler1.next = adler1_next
             else:
 
                 print("unknow state?!")

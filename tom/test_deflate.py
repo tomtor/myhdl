@@ -163,7 +163,7 @@ class TestDeflate(unittest.TestCase):
             print("c_data:", len(c_data), c_data)
             print("zl_data:", len(zl_data), zl_data)
 
-            # print("zlib test:", zlib.decompress(c_data))
+            print("zlib test:", zlib.decompress(c_data))
 
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE
