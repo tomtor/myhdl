@@ -30,7 +30,7 @@ else:
 d_state = enum('IDLE', 'HEADER', 'BL', 'READBL', 'REPEAT', 'DISTTREE', 'INIT3',
                'HF1', 'HF1INIT', 'HF2', 'HF3', 'HF4', 'STATIC', 'D_NEXT',
                'D_INFLATE', 'SPREAD', 'NEXT', 'INFLATE', 'COPY', 'CSTATIC',
-               'SEARCH', 'DISTANCE') # , encoding='one_hot')
+               'SEARCH', 'DISTANCE', 'CHECKSUM') # , encoding='one_hot')
 
 CodeLengthOrder = (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14,
                    1, 15)
@@ -160,6 +160,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
     adler2 = Signal(intbv()[16:])
     ladler1 = Signal(intbv()[16:])
 
+
     @always(clk.posedge)
     def oramwrite():
         oram[oaddr].next = obyte
@@ -241,9 +242,9 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
 
 
     def adv(width):
-        print("adv", width, di, dio, do, doo)
+        # print("adv", width, di, dio, do, doo)
         nshift = ((dio + width) >> 3)
-        print("nshift: ", nshift)
+        # print("nshift: ", nshift)
 
         dio.next = (dio + width) & 0x7
         di.next = di + nshift
@@ -512,11 +513,12 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                 else:
                     bdata = b1adler
                     # Fix this when > 1 byte output:
+                    print("cs1", bdata)
                     adler1_next = (adler1 + bdata) % 65521
                     adler1.next = adler1_next
                     adler2.next = (adler2 + ladler1) % 65521
                     ladler1.next = adler1_next
-                    print("1: ", bdata, di, isize)
+                    # print("in: ", bdata, di, isize)
                     state.next = d_state.SEARCH
                     cur_search.next = di - 3
 
@@ -545,8 +547,24 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         oaddr.next = do
                         obyte.next = put(outcode, 5 + extra_bits)
                         put_adv(outcode, 5 + extra_bits)
-                        state.next = d_state.CSTATIC
-                    cur_i.next = cur_i + 1
+                        #state.next = d_state.CSTATIC
+                        cur_i.next = di - 2
+                        state.next = d_state.CHECKSUM
+                    else:
+                        cur_i.next = cur_i + 1
+
+            elif state == d_state.CHECKSUM:
+
+                if cur_i < di:
+                    print("CHECKSUM", cur_i, di, iram[cur_i])
+                    bdata = iram[cur_i]
+                    adler1_next = (adler1 + bdata) % 65521
+                    adler1.next = adler1_next
+                    adler2.next = (adler2 + ladler1) % 65521
+                    ladler1.next = adler1_next
+                    cur_i.next = cur_i.next + 1
+                else:
+                    state.next = d_state.CSTATIC
 
             elif state == d_state.SEARCH:
 
@@ -1023,11 +1041,11 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         else:
                             if static:
                                 token = code - 257
-                                print("E:", token)
+                                # print("E:", token)
                                 tlength = CopyLength[token]
                                 # print("tlength", tlength)
                                 extraLength = ExtraLengthBits[token]
-                                print("extralengthbits", extraLength)
+                                # print("extralengthbits", extraLength)
                                 tlength += get4(0, extraLength)
                                 # print("tlength extra", tlength)
                                 t = get4(extraLength, 5)
@@ -1040,7 +1058,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                                 distance += get4(extraLength + 5, moreBits)
                                 print("distance2", distance)
                                 adv(extraLength + 5 + moreBits)
-                                print("adv", extraLength + 5 + moreBits)
+                                # print("adv", extraLength + 5 + moreBits)
                                 offset.next = do - distance
                                 length.next = tlength
                                 cur_i.next = 0
@@ -1079,11 +1097,6 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         obyte.next = orbyte
                         o_progress.next = do + 1
                         do.next = do + 1
-                        print("cs", orbyte)
-                        adler1_next = (adler1 + orbyte) % 65521
-                        adler1.next = adler1_next
-                        adler2.next = (adler2 + ladler1) % 65521
-                        ladler1.next = adler1_next
                 else:
                     oaddr.next = do
                     obyte.next = orbyte
@@ -1092,11 +1105,6 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                     cur_next.next = 0
                     state.next = d_state.NEXT
 
-                    print("csl", orbyte)
-                    adler1_next = (adler1 + orbyte) % 65521
-                    adler1.next = adler1_next
-                    adler2.next = (adler2 + ladler1) % 65521
-                    ladler1.next = adler1_next
             else:
 
                 print("unknow state?!")
