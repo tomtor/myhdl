@@ -20,6 +20,8 @@ IDLE, RESET, WRITE, READ, STARTC, STARTD = range(6)
 OBSIZE = 8192
 IBSIZE = 2048
 
+CWINDOW = 32
+
 if OBSIZE > IBSIZE:
     LBSIZE = log2(OBSIZE)
 else:
@@ -69,7 +71,6 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
     state = Signal(d_state.IDLE)
     method = Signal(intbv()[3:])
     final = Signal(bool())
-    first = Signal(bool())
     do_compress = Signal(bool())
 
     numLiterals = Signal(intbv()[9:])
@@ -133,11 +134,21 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
     doo = Signal(intbv()[3:])
 
     b1 = Signal(intbv()[32:])
-    b1adler = Signal(intbv()[8:])
     b2 = Signal(intbv()[24:])
     b3 = Signal(intbv()[16:])
     b4 = Signal(intbv()[8:])
+    """
+    b1 = Signal(intbv()[8:])
+    b2 = Signal(intbv()[8:])
+    b3 = Signal(intbv()[8:])
+    b4 = Signal(intbv()[8:])
+
+    b41 = ConcatSignal(b4, b3, b2, b1)
+    """
+
     nb = Signal(intbv()[3:])
+    b1adler = Signal(intbv()[8:])
+
     newnb = Signal(intbv()[3:])
     filled = Signal(bool())
     wait_data = Signal(bool())
@@ -215,20 +226,25 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
         if nb != 4:
             print("----NB----")
             raise Error("NB")
-        # this worls in Icarus but fails in Vivado
+        # this works in Icarus but fails in Vivado
         # bb4 = intbv(b4.val)[32:]
         # bb3 = intbv(b3.val)[24:]
         # bb2 = intbv(b2.val)[16:]
         # print("get4", b1,b2,b3,b4)
         return (((b4 << 24) | (b3 << 16) | (b2 << 8) | b1) >>
             (dio + boffset)) & ((1 << width) - 1)
+        """
+        print("b41", b41)
+        return (b41 >> (dio + boffset)) & ((1 << width) - 1)
+        """
         # this fails in MyHDL:
         # return concat(b4, b3, b2, b1)(dio + offset + width, dio + boffset)
 
 
     def adv(width):
+        print("adv", width, di, dio, do, doo)
         nshift = ((dio + width) >> 3)
-        # print("nshift: ", nshift)
+        print("nshift: ", nshift)
 
         dio.next = (dio + width) & 0x7
         di.next = di + nshift
@@ -249,7 +265,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
             raise Error("width > 9")
         if d > ((1 << width) - 1):
             raise Error("too big")
-        # print("put_adv:", d, width, do, doo, ob1)
+        print("put_adv:", d, width, do, doo, di, dio)
         pshift = (doo + width) > 8
         # print("pshift: ", pshift)
         if pshift:
@@ -444,14 +460,14 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                     obyte.next = put(0x3, 3)
                     put_adv(0x3, 3)
                 elif flush:
-                    # print(do, ob1)
+                    print("flush", do, ob1)
                     no_adv = 1
                     oaddr.next = do
                     obyte.next = ob1
                     do_flush()
                 elif cur_cstatic - 3 > isize:
                     if cur_cstatic - 3 == isize + 1:
-                        print("Put EOF")
+                        print("Put EOF", do)
                         i = EndOfBlock
                         outlen = codeLength[i]
                         outbits = code_bits[i]
@@ -497,6 +513,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                 else:
                     bdata = b1adler
                     # adv(8)
+                    # Fix this when > 1 byte output:
                     adler1_next = (adler1 + bdata) % 65521
                     adler1.next = adler1_next
                     adler2.next = (adler2 + ladler1) % 65521
@@ -510,24 +527,28 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
 
             elif state == d_state.DISTANCE:
 
-                print("DISTANCE", di, do, cur_i, cur_search)
-                nextdist = CopyDistance[cur_i+1]
-                if nextdist > cur_search:
-                    print("Found distance", cur_i)
-                    copydist = CopyDistance[cur_i]
-                    extra_dist = cur_search - copydist
-                    print("extra dist", extra_dist)
-                    extra_bits = ExtraDistanceBits[cur_i//2]
-                    print("extra bits", extra_bits)
-                    if extra_dist >= (1 << extra_bits) - 1:
-                        raise Error("too few extra")
-                    outcode = (rev_bits(cur_i, 5) | (extra_dist << 5))
-                    oaddr.next = do
-                    do.next = do + 1
-                    o_progress.next = do + 1
-                    obyte.next = put(outcode, 5 + extra_bits)
-                    put_adv(outcode, 5 + extra_bits)
-                    state.next = d_state.CSTATIC
+                if flush:
+                    do_flush()
+                else:
+                    # print("DISTANCE", di, do, cur_i, cur_search)
+                    nextdist = CopyDistance[cur_i+1]
+                    if nextdist > cur_search:
+                        print("Found distance", cur_i)
+                        copydist = CopyDistance[cur_i]
+                        extra_dist = cur_search - copydist
+                        # print("extra dist", extra_dist)
+                        extra_bits = ExtraDistanceBits[cur_i // 2]
+                        # print("extra bits", extra_bits)
+                        if extra_dist > ((1 << extra_bits) - 1):
+                            raise Error("too few extra")
+                        # print("rev", cur_i, rev_bits(cur_i, 5))
+                        outcode = (rev_bits(cur_i, 5) | (extra_dist << 5))
+                        # print("outcode", outcode)
+                        oaddr.next = do
+                        obyte.next = put(outcode, 5 + extra_bits)
+                        put_adv(outcode, 5 + extra_bits)
+                        state.next = d_state.CSTATIC
+                    cur_i.next = cur_i + 1
 
             elif state == d_state.SEARCH:
 
@@ -536,29 +557,28 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                 elif nb < 4:
                     pass
                 else:
-                    if cur_search >= 0 and di > 3 and di < isize - 3:
+                    if cur_search >= 0 \
+                             and cur_search >= di - CWINDOW \
+                             and di >= 3 and di < isize - 3:
                         if iram[cur_search] == b1 and \
                                 iram[cur_search+1] == b2 and \
-                                iram[cur_search+2] == b3 and \
-                                iram[cur_search+3] == b4:
-                            print("found:", cur_search, di)
-                            adv(24)
+                                iram[cur_search+2] == b3:
+                            print("found:", cur_search, di, isize)
                             # Length is 3 code
                             lencode = 257
                             outlen = codeLength[lencode]
                             outbits = code_bits[lencode]
-                            print("BITS:", outlen, outbits)
+                            # print("BITS:", outlen, outbits)
                             oaddr.next = do
-                            do.next = do + 1
-                            o_progress.next = do + 1
                             obyte.next = put(outbits, outlen)
                             put_adv(outbits, outlen)
 
-                            distance = do - cur_search
-                            print("distance", distance)
+                            distance = di - cur_search
+                            # print("distance", distance)
                             cur_search.next = distance
                             cur_i.next = 0
-
+                            adv(24)
+                            cur_cstatic.next = cur_cstatic + 2
                             state.next = d_state.DISTANCE
                         else:
                             cur_search.next = cur_search - 1
@@ -567,7 +587,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         adv(8)
                         outlen = codeLength[bdata]
                         outbits = code_bits[bdata]
-                        # print("BITS:", bdata, outlen, outbits)
+                        print("CBITS:", bdata, outlen, outbits)
                         oaddr.next = do
                         obyte.next = put(outbits, outlen)
                         put_adv(outbits, outlen)
@@ -961,7 +981,6 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         offset.next = do - distance
                         length.next = tlength
                         # cur_next.next = 0
-                        first.next = True
                         cur_i.next = 0
                         state.next = d_state.COPY
 
@@ -993,7 +1012,7 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                             state.next = d_state.IDLE
                     else:
                         if code < EndOfBlock:
-                            # print("B:", code, di, do)
+                            print("B:", code, di, do)
                             oaddr.next = do
                             obyte.next = code
                             o_progress.next = do + 1
@@ -1006,20 +1025,26 @@ def deflate(i_mode, o_done, i_data, o_progress, o_byte, i_addr, clk, reset):
                         else:
                             if static:
                                 token = code - 257
-                                # print("E:", token)
+                                print("E:", token)
                                 tlength = CopyLength[token]
+                                # print("tlength", tlength)
                                 extraLength = ExtraLengthBits[token]
+                                print("extralengthbits", extraLength)
                                 tlength += get4(0, extraLength)
+                                # print("tlength extra", tlength)
                                 t = get4(extraLength, 5)
                                 distanceCode = rev_bits(t, 5)
+                                # print("dcode", distanceCode)
                                 distance = CopyDistance[distanceCode]
+                                # print("distance", distance)
                                 moreBits = ExtraDistanceBits[distanceCode
                                                                 >> 1]
                                 distance += get4(extraLength + 5, moreBits)
+                                print("distance2", distance)
                                 adv(extraLength + 5 + moreBits)
+                                print("adv", extraLength + 5 + moreBits)
                                 offset.next = do - distance
                                 length.next = tlength
-                                first.next = True
                                 cur_i.next = 0
                                 state.next = d_state.COPY
                             else:

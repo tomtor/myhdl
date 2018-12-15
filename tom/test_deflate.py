@@ -29,13 +29,14 @@ else:
 
 
 def test_data(m):
+    print("MODE", m)
     if m == 0:
         str_data = " ".join(["Hello World! " + str(1) + " "
                              for i in range(100)])
         b_data = str_data.encode('utf-8')
     elif m == 1:
         str_data = " ".join(["Hello World! " + str(i) + " "
-                             for i in range(50)])
+                             for i in range(5)])
         b_data = str_data.encode('utf-8')
     elif m == 2:
         str_data = " ".join(["Hi: " + str(random.randrange(0,0x1000)) + " "
@@ -162,7 +163,7 @@ class TestDeflate(unittest.TestCase):
             print("c_data:", len(c_data), c_data)
             print("zl_data:", len(zl_data), zl_data)
 
-            print("zlib test:", zlib.decompress(c_data))
+            # print("zlib test:", zlib.decompress(c_data))
 
             print("WRITE COMPRESSED RESULT")
             i_mode.next = WRITE
